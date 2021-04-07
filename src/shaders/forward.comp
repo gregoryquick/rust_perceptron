@@ -1,0 +1,17 @@
+#version 450
+layout(set = 0, binding = 0) buffer NetworkWeights {
+    float[] network_weights;
+};
+
+layout(set = 0, binding = 1) buffer InputVector {
+    float[] input_vector;
+};
+
+layout(set = 0, binding = 2) buffer Target {
+    float[] target;
+};
+
+void main() {
+    //uint index = gl_GlobalInvocationID.x;
+    //target[index] = dotProduct(index);
+}
