@@ -64,7 +64,7 @@ impl PipelineManager{
             adapter: adapter,
             device: device,
             queue: queue,
-            network_shape: (input_size,output_size),
+            network_shape: (input_size, output_size),
         }
     }
 
@@ -84,7 +84,6 @@ impl PipelineManager{
 
         //Load data into gpu
         use wgpu::util::{BufferInitDescriptor, DeviceExt};
-
         let buffers = pipeline.get_buffers();
 
         let weight_data_buffer = self.device.create_buffer_init(
@@ -99,7 +98,7 @@ impl PipelineManager{
             &buffers[0], 0,
             (type_size * self.network_shape.0 as u64 * self.network_shape.1 as u64) as wgpu::BufferAddress,
         );
-
+        
         let input_data_buffer = self.device.create_buffer_init(
             &BufferInitDescriptor {
                 label: None,
@@ -141,7 +140,7 @@ impl PipelineManager{
         encoder.copy_buffer_to_buffer(
             &buffers[2], 0,
             &staging_buffer, 0,
-            (type_size * self.network_shape.0 as u64) as wgpu::BufferAddress,
+            (type_size * self.network_shape.1 as u64) as wgpu::BufferAddress,
         );
 
         //Finish building command encoder and submit
@@ -159,7 +158,7 @@ impl PipelineManager{
             Ok(()) => {
                 //Get buffer contents
                 let data = buffer_slice.get_mapped_range();
-                let result: Vec<T> = data.chunks_exact(4).map(|b| *bytemuck::from_bytes::<T>(b)).collect();
+                let result: Vec<T> = data.chunks_exact(type_size as usize).map(|b| *bytemuck::from_bytes::<T>(b)).collect();
                 
                 //Drop mapped view
                 drop(data);

@@ -11,7 +11,17 @@ layout(set = 0, binding = 2) buffer Target {
     float[] target;
 };
 
+uint k = 16;
+
+float dotProduct(uint index_value) {
+    float accumulator = 0;
+    for(uint i = 0; i < k; i++){
+        accumulator += network_weights[index_value*k + i] * input_vector[i];
+    }
+    return accumulator;
+}
+
 void main() {
-    //uint index = gl_GlobalInvocationID.x;
-    //target[index] = dotProduct(index);
+    uint index = gl_GlobalInvocationID.x;
+    target[index] = dotProduct(index);
 }
