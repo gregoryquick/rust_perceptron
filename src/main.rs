@@ -10,8 +10,7 @@ fn main() {
     const OUTPUT_DIM: usize = 12;
 
     //Make gpu pipelines
-    let mut gpu_pipeline = block_on(PipelineManager::new(DATA_DIM, OUTPUT_DIM));
-    let forward_pipeline = gpu_pipeline.new_pipeline::<pipelines::ForwardPass, f32>();
+    let pipeline_manager = block_on(PipelineManager::new(DATA_DIM, OUTPUT_DIM));
     
     //Make network weights and a test input
     use rand::distributions::{Distribution, Uniform};
@@ -38,7 +37,9 @@ fn main() {
     println!("{:?}", input_vector);
     
     //Compute forward pass result
-    let result = block_on(gpu_pipeline.run_forward_pass::<f32>(forward_pipeline, &network_weights, &input_vector)).unwrap();
+    let forward_pipeline = pipeline_manager.new_pipeline::<pipelines::ForwardPass, f32>(1usize);
+
+    let result = block_on(pipeline_manager.run_forward_pass::<f32>(forward_pipeline, &network_weights, &input_vector)).unwrap();
     println!("Result:");
     println!("{:?}", result);
 }
@@ -77,13 +78,13 @@ impl PipelineManager{
         }
     }
 
-    fn new_pipeline<P: pipelines::Pipeline, T: bytemuck::Pod>(&self) -> P {
-        P::new::<T>(&self.device, self.network_shape.0, self.network_shape.1)
+    fn new_pipeline<P: pipelines::Pipeline, T: bytemuck::Pod>(&self, batch_size: usize,) -> P {
+        P::new::<T>(&self.device, self.network_shape.0, self.network_shape.1, batch_size)
     }
 
     async fn run_forward_pass<T: bytemuck::Pod>(&self, pipeline: pipelines::ForwardPass, network_weights: &[T], input_vector: &[T]) -> Option<Vec<T>> {
         use pipelines::*;
-        let type_size = std::mem::size_of::<T>() as wgpu::BufferAddress;
+        let type_size = std::mem::size_of::<T>();
 
         //Create command encoder
         let mut encoder = self.device.create_command_encoder(
@@ -95,6 +96,8 @@ impl PipelineManager{
         //Load data into gpu
         use wgpu::util::{BufferInitDescriptor, DeviceExt};
         let buffers = pipeline.get_buffers();
+        let batch_size: usize = pipeline.get_batch_size();
+
 
         let weight_data_buffer = self.device.create_buffer_init(
             &BufferInitDescriptor {
@@ -106,7 +109,7 @@ impl PipelineManager{
         encoder.copy_buffer_to_buffer(
             &weight_data_buffer, 0,
             &buffers[1], 0,
-            (type_size * self.network_shape.0 as u64 * self.network_shape.1 as u64) as wgpu::BufferAddress,
+            (type_size * self.network_shape.0 * self.network_shape.1) as wgpu::BufferAddress,
         );
         
         let input_data_buffer = self.device.create_buffer_init(
@@ -119,7 +122,7 @@ impl PipelineManager{
         encoder.copy_buffer_to_buffer(
             &input_data_buffer, 0,
             &buffers[2], 0,
-            (type_size * self.network_shape.0 as u64) as wgpu::BufferAddress,
+            (type_size * self.network_shape.0 * batch_size) as wgpu::BufferAddress,
         );
 
         //Create the compute pass (Mutably borrows encoder)
@@ -142,7 +145,7 @@ impl PipelineManager{
         let staging_buffer = self.device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("Staging buffer"),
-                size: (type_size * self.network_shape.1 as u64) as wgpu::BufferAddress,
+                size: (type_size * self.network_shape.1 * batch_size) as wgpu::BufferAddress,
                 usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
                 mapped_at_creation: false,
             }
@@ -150,7 +153,7 @@ impl PipelineManager{
         encoder.copy_buffer_to_buffer(
             &buffers[3], 0,
             &staging_buffer, 0,
-            (type_size * self.network_shape.1 as u64) as wgpu::BufferAddress,
+            (type_size * self.network_shape.1 * batch_size) as wgpu::BufferAddress,
         );
 
         //Finish building command encoder and submit
@@ -168,7 +171,7 @@ impl PipelineManager{
             Ok(()) => {
                 //Get buffer contents
                 let data = buffer_slice.get_mapped_range();
-                let result: Vec<T> = data.chunks_exact(type_size as usize).map(|b| *bytemuck::from_bytes::<T>(b)).collect();
+                let result: Vec<T> = data.chunks_exact(type_size).map(|b| *bytemuck::from_bytes::<T>(b)).collect();
                 
                 //Drop mapped view
                 drop(data);

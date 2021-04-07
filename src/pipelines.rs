@@ -1,7 +1,9 @@
 pub trait Pipeline {
-    fn new<T: bytemuck::Pod>(device: &wgpu::Device, input_size: usize, output_size: usize,) -> Self;
+    fn new<T: bytemuck::Pod>(device: &wgpu::Device, input_size: usize, output_size: usize, number_of_inputs: usize,) -> Self;
 
     fn get_buffers(&self) -> &Vec<wgpu::Buffer>;
+
+    fn get_batch_size(&self) -> usize;
 
     fn get_bind_group(&self) -> &wgpu::BindGroup;
 
@@ -10,18 +12,18 @@ pub trait Pipeline {
 
 pub struct ForwardPass {
     buffers: Vec<wgpu::Buffer>,
+    batch_size: usize,
     bind_group: wgpu::BindGroup,
     compute_pipeline: wgpu::ComputePipeline,
 }
 
 impl Pipeline for ForwardPass {
-    fn new<T: bytemuck::Pod>(device: &wgpu::Device, input_size: usize, output_size: usize,) -> Self{
-
+    fn new<T: bytemuck::Pod>(device: &wgpu::Device, input_size: usize, output_size: usize, batch_size: usize,) -> Self{
         //Create buffers
         use wgpu::util::{BufferInitDescriptor, DeviceExt};
         let mut buffers: Vec<wgpu::Buffer> = Vec::new();
-        let type_size = std::mem::size_of::<T>() as wgpu::BufferAddress;
-
+        let type_size = std::mem::size_of::<T>();
+        
         let uniform_buffer = device.create_buffer_init(
             &BufferInitDescriptor {
                 label: Some("Uniform Buffer"),
@@ -34,7 +36,7 @@ impl Pipeline for ForwardPass {
         let weight_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("Network Weights"),
-                size: (type_size * input_size as u64 * output_size as u64) as wgpu::BufferAddress,
+                size: (type_size * input_size * output_size) as wgpu::BufferAddress,
                 usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
                 mapped_at_creation: false,
             }
@@ -44,7 +46,7 @@ impl Pipeline for ForwardPass {
         let input_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("Input Buffer"),
-                size: (type_size * input_size as u64) as wgpu::BufferAddress,
+                size: (type_size * input_size * batch_size) as wgpu::BufferAddress,
                 usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
                 mapped_at_creation: false,
             }
@@ -54,7 +56,7 @@ impl Pipeline for ForwardPass {
         let output_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("Output buffer"),
-                size: (type_size * output_size as u64) as wgpu::BufferAddress,
+                size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
                 usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
                 mapped_at_creation: false,
             }
@@ -166,6 +168,7 @@ impl Pipeline for ForwardPass {
         );
         ForwardPass{
             buffers,
+            batch_size,
             bind_group,
             compute_pipeline,
         }
@@ -174,6 +177,11 @@ impl Pipeline for ForwardPass {
     fn get_buffers(&self) -> &Vec<wgpu::Buffer>{
         &self.buffers
     }
+
+    fn get_batch_size(&self) -> usize {
+        self.batch_size
+    }
+
 
     fn get_bind_group(&self) -> &wgpu::BindGroup{
         &self.bind_group
