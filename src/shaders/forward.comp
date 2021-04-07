@@ -1,17 +1,19 @@
 #version 450
-layout(set = 0, binding = 0) buffer NetworkWeights {
+layout(set = 0, binding = 0) uniform K {
+    uint k;
+};
+
+layout(set = 0, binding = 1) buffer NetworkWeights {
     float[] network_weights;
 };
 
-layout(set = 0, binding = 1) buffer InputVector {
+layout(set = 0, binding = 2) buffer InputVector {
     float[] input_vector;
 };
 
-layout(set = 0, binding = 2) buffer Target {
+layout(set = 0, binding = 3) buffer Target {
     float[] target;
 };
-
-uint k = 16;
 
 float dotProduct(uint index_value) {
     float accumulator = 0;

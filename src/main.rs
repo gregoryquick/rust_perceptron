@@ -9,28 +9,33 @@ fn main() {
 
     //Make gpu pipelines
     let mut gpu_pipeline = block_on(PipelineManager::new(DATA_DIM, OUTPUT_DIM));
-    let forward_pipeline = gpu_pipeline.new_pipeline::<ForwardPass, f64>();
+    let forward_pipeline = gpu_pipeline.new_pipeline::<ForwardPass, f32>();
     
     //Make network weights and a test input
     let mut rng = rand::thread_rng();
     let network_weights = {
         const WEIGHT_SIZE: usize = DATA_DIM * OUTPUT_DIM;
-        let mut vector: [f64; WEIGHT_SIZE] = [0f64; WEIGHT_SIZE];
+        let mut vector: [f32; WEIGHT_SIZE] = [0f32; WEIGHT_SIZE];
         for num in vector.iter_mut() {
             *num = rng.gen();
         }
         vector
     };
+    println!("Weights:");
+    println!("{:?}", network_weights);
     let input_vector = {
-        let mut vector: [f64; DATA_DIM] = [0f64; DATA_DIM];
+        let mut vector: [f32; DATA_DIM] = [0f32; DATA_DIM];
         for num in vector.iter_mut() {
             *num = rng.gen();
         }
         vector
     };
+    println!("Input:");
+    println!("{:?}", input_vector);
     
     //Compute forward pass result
-    let result = block_on(gpu_pipeline.run_forward_pass::<f64>(forward_pipeline, &network_weights, &input_vector)).unwrap();
+    let result = block_on(gpu_pipeline.run_forward_pass::<f32>(forward_pipeline, &network_weights, &input_vector)).unwrap();
+    println!("Result:");
     println!("{:?}", result);
 }
 
@@ -95,7 +100,7 @@ impl PipelineManager{
         );
         encoder.copy_buffer_to_buffer(
             &weight_data_buffer, 0,
-            &buffers[0], 0,
+            &buffers[1], 0,
             (type_size * self.network_shape.0 as u64 * self.network_shape.1 as u64) as wgpu::BufferAddress,
         );
         
@@ -107,8 +112,8 @@ impl PipelineManager{
             }
         );
         encoder.copy_buffer_to_buffer(
-            &weight_data_buffer, 0,
-            &buffers[1], 0,
+            &input_data_buffer, 0,
+            &buffers[2], 0,
             (type_size * self.network_shape.0 as u64) as wgpu::BufferAddress,
         );
 
@@ -138,7 +143,7 @@ impl PipelineManager{
             }
         );
         encoder.copy_buffer_to_buffer(
-            &buffers[2], 0,
+            &buffers[3], 0,
             &staging_buffer, 0,
             (type_size * self.network_shape.1 as u64) as wgpu::BufferAddress,
         );
@@ -195,8 +200,18 @@ impl Pipeline for ForwardPass {
     fn new<T: bytemuck::Pod>(device: &wgpu::Device, input_size: usize, output_size: usize,) -> Self{
 
         //Create buffers
+        use wgpu::util::{BufferInitDescriptor, DeviceExt};
         let mut buffers: Vec<wgpu::Buffer> = Vec::new();
         let type_size = std::mem::size_of::<T>() as wgpu::BufferAddress;
+
+        let uniform_buffer = device.create_buffer_init(
+            &BufferInitDescriptor {
+                label: Some("Uniform Buffer"),
+                contents: bytemuck::bytes_of(&input_size),
+                usage: wgpu::BufferUsage::UNIFORM,
+            }
+        );
+        buffers.push(uniform_buffer);
 
         let weight_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -236,9 +251,7 @@ impl Pipeline for ForwardPass {
                     binding: 0,
                     visibility: wgpu::ShaderStage::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage {
-                            read_only: false,
-                        },
+                        ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: wgpu::BufferSize::new(0),
                     },
@@ -258,6 +271,18 @@ impl Pipeline for ForwardPass {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
+                    visibility: wgpu::ShaderStage::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage {
+                            read_only: false,
+                        },
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(0),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
                     visibility: wgpu::ShaderStage::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage {
@@ -285,6 +310,10 @@ impl Pipeline for ForwardPass {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: buffers[2].as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: buffers[3].as_entire_binding(),
                 },],
             }
         );
