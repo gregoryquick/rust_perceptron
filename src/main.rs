@@ -7,6 +7,7 @@ fn main() {
     const OUTPUT_DIM: usize = 2;
     let mut rng = rand::thread_rng();
     let mut gpu_pipeline = block_on(PipelineManager::new(DATA_DIM, OUTPUT_DIM));
+    let forward_pipeline = gpu_pipeline.new_pipeline::<ForwardPass, f64>();
     let random_data = create_random_array::<DATA_DIM>(&mut rng);
     println!("{:?}", random_data);
 }
@@ -54,10 +55,14 @@ impl PipelineManager{
             network_shape: (input_size,output_size),
         }
     }
+
+    fn new_pipeline<P: Pipeline, T: bytemuck::Pod>(&self) -> P {
+        P::new::<T>(&self.device, self.network_shape.0, self.network_shape.1)
+    }
 }
 
 trait Pipeline {
-    fn new<T: bytemuck::Pod>(device: wgpu::Device, input_size: usize, output_size: usize,) -> Self;
+    fn new<T: bytemuck::Pod>(device: &wgpu::Device, input_size: usize, output_size: usize,) -> Self;
 
     fn get_buffers(&self) -> &Vec<wgpu::Buffer>;
 
@@ -73,7 +78,7 @@ struct ForwardPass {
 }
 
 impl Pipeline for ForwardPass {
-    fn new<T: bytemuck::Pod>(device: wgpu::Device, input_size: usize, output_size: usize,) -> Self{
+    fn new<T: bytemuck::Pod>(device: &wgpu::Device, input_size: usize, output_size: usize,) -> Self{
 
         //Create buffers
         let mut buffers: Vec<wgpu::Buffer> = Vec::new();
@@ -87,7 +92,7 @@ impl Pipeline for ForwardPass {
                 mapped_at_creation: false,
             }
         );
-        //buffers.push(weight_buffer);
+        buffers.push(weight_buffer);
 
         let input_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -97,7 +102,7 @@ impl Pipeline for ForwardPass {
                 mapped_at_creation: false,
             }
         );
-        //buffers.push(input_buffer);
+        buffers.push(input_buffer);
         
         let output_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -107,7 +112,7 @@ impl Pipeline for ForwardPass {
                 mapped_at_creation: false,
             }
         );
-        //buffers.push(output_buffer);
+        buffers.push(output_buffer);
         
         //Create buffer bind group for pipeline
         let bind_group_layout = device.create_bind_group_layout(
@@ -157,15 +162,15 @@ impl Pipeline for ForwardPass {
                 layout: &bind_group_layout,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: weight_buffer.as_entire_binding(),
+                    resource: buffers[0].as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: input_buffer.as_entire_binding(),
+                    resource: buffers[1].as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: output_buffer.as_entire_binding(),
+                    binding: 2,
+                    resource: buffers[2].as_entire_binding(),
                 },],
             }
         );
@@ -217,5 +222,3 @@ impl Pipeline for ForwardPass {
         &self.compute_pipeline
     }
 }
-
-//<T: bytemuck::Pod>(input_size: usize, output_size: usize,)
