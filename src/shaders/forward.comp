@@ -23,7 +23,11 @@ float dotProduct(uint index_value) {
     return accumulator;
 }
 
+float Lrelu(float x) {
+    return (x > 0.0) ? x : 0.1 * x;
+}
+
 void main() {
     uint index = gl_GlobalInvocationID.x;
-    target[index] = dotProduct(index);
+    target[index] = Lrelu(dotProduct(index));
 }
