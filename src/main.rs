@@ -3,8 +3,31 @@ mod pipelines;
 use rand::prelude::*;
 
 use futures::executor::block_on;
+use std::thread;
 
 fn main() {
+    //Default stack size is 8 * 1024 * 1024
+    //All sizes for batches assum 256*256 f32
+    //Batch size 4 needs >= 9 * 1024 * 1024
+    //Batch size 8 needs >= 11 * 1024 * 1024
+    //Batch size 32 needs >= 23 * 1024 * 1024
+    //Batch size 64 needs >= 39 * 1024 * 1024
+    //Batch size 128 needs >= 71 * 1024 * 1024
+    //Batch size 256 needs >= 135 * 1024 * 1024
+    //Batch size 512 needs >= 263 * 1024 * 1024
+
+    const STACK_SIZE: usize = 263 * 1024 * 1024;    
+    // Spawn thread with explicit stack size
+    let child = thread::Builder::new()
+        .stack_size(STACK_SIZE)
+        .spawn(run)
+        .unwrap();
+
+    // Wait for thread to join
+    child.join().unwrap();
+}
+
+fn run() {
     //Network parameters
     const DATA_DIM: usize = 65536;
     const OUTPUT_DIM: usize = 12;
@@ -27,7 +50,8 @@ fn main() {
     //println!("Weights:");
     //println!("{:?}", network_weights);
     
-    const BATCH_SIZE: usize = 2;
+        
+    const BATCH_SIZE: usize = 512;
     let input_vector = {
         const DATA_SIZE: usize = DATA_DIM * BATCH_SIZE;
         let mut vector: [f32; DATA_SIZE] = [0f32; DATA_SIZE];
