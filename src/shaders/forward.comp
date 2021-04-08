@@ -1,6 +1,8 @@
 #version 450
-layout(set = 0, binding = 0) uniform K {
-    uint k;
+layout(set = 0, binding = 0) uniform UniformBuffer {
+    uint input_size;
+    uint output_size;
+    uint batch_size;
 };
 
 layout(set = 0, binding = 1) buffer NetworkWeights {
@@ -15,10 +17,10 @@ layout(set = 0, binding = 3) buffer Target {
     float[] target;
 };
 
-float dotProduct(uint index_value) {
+float dotProduct(uint x_index ,uint y_index) {
     float accumulator = 0;
-    for(uint i = 0; i < k; i++){
-        accumulator += network_weights[index_value*k + i] * input_vector[i];
+    for(uint k = 0; k < input_size; k++){
+        accumulator += network_weights[k * output_size + x_index] * input_vector[y_index * input_size + k];
     }
     return accumulator;
 }
@@ -28,6 +30,7 @@ float Lrelu(float x) {
 }
 
 void main() {
-    uint index = gl_GlobalInvocationID.x;
-    target[index] = Lrelu(dotProduct(index));
+    uint index_x = gl_GlobalInvocationID.x;
+    uint index_y = gl_GlobalInvocationID.y;
+    target[index_y * output_size +  index_x] = Lrelu(dotProduct(index_x, index_y));
 }

@@ -23,11 +23,12 @@ impl Pipeline for ForwardPass {
         use wgpu::util::{BufferInitDescriptor, DeviceExt};
         let mut buffers: Vec<wgpu::Buffer> = Vec::new();
         let type_size = std::mem::size_of::<T>();
-        
+
+        let uniform_data = [input_size as u32, output_size as u32, batch_size as u32];
         let uniform_buffer = device.create_buffer_init(
             &BufferInitDescriptor {
                 label: Some("Uniform Buffer"),
-                contents: bytemuck::bytes_of(&input_size),
+                contents: bytemuck::bytes_of(&uniform_data),
                 usage: wgpu::BufferUsage::UNIFORM,
             }
         );
