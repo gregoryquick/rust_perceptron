@@ -1,4 +1,5 @@
 mod pipelines;
+mod data;
 
 use rand::prelude::*;
 
@@ -6,17 +7,12 @@ use futures::executor::block_on;
 use std::thread;
 
 fn main() {
-    //Default stack size is 8 * 1024 * 1024
-    //All sizes for batches assum 256*256 f32
-    //Batch size 4 needs >= 9 * 1024 * 1024
-    //Batch size 8 needs >= 11 * 1024 * 1024
-    //Batch size 32 needs >= 23 * 1024 * 1024
-    //Batch size 64 needs >= 39 * 1024 * 1024
-    //Batch size 128 needs >= 71 * 1024 * 1024
-    //Batch size 256 needs >= 135 * 1024 * 1024
-    //Batch size 512 needs >= 263 * 1024 * 1024
+    
+    let training_data = data::load_data("train").unwrap();
+    println!("{}",training_data[0].classification);
 
-    const STACK_SIZE: usize = 263 * 1024 * 1024;    
+    //Default stack size is 8 * 1024 * 1024
+    const STACK_SIZE: usize = 8 * 1024 * 1024;    
     // Spawn thread with explicit stack size
     let child = thread::Builder::new()
         .stack_size(STACK_SIZE)
@@ -29,14 +25,14 @@ fn main() {
 
 fn run() {
     //Network parameters
-    const DATA_DIM: usize = 65536;
-    const OUTPUT_DIM: usize = 12;
+    const DATA_DIM: usize = 28 * 28;
+    const OUTPUT_DIM: usize = 10;
 
     //Make gpu pipelines
     let pipeline_manager = block_on(PipelineManager::new(DATA_DIM, OUTPUT_DIM));
     
     //Make network weights and a test input
-    use rand::distributions::{Distribution, Uniform};
+    use rand::distributions::Uniform;
     let mut rng = rand::thread_rng();
     let dist = Uniform::new(-1.0,1.0);
     let network_weights = {
@@ -50,8 +46,7 @@ fn run() {
     //println!("Weights:");
     //println!("{:?}", network_weights);
     
-        
-    const BATCH_SIZE: usize = 512;
+    const BATCH_SIZE: usize = 4;
     let input_vector = {
         const DATA_SIZE: usize = DATA_DIM * BATCH_SIZE;
         let mut vector: [f32; DATA_SIZE] = [0f32; DATA_SIZE];
@@ -67,10 +62,12 @@ fn run() {
     let forward_pipeline = pipeline_manager.new_pipeline::<pipelines::ForwardPass, f32>(BATCH_SIZE);
 
     let result = block_on(pipeline_manager.run_forward_pass::<f32>(forward_pipeline, &network_weights, &input_vector)).unwrap();
+    let results: Vec<&[f32]> = result.chunks(OUTPUT_DIM).collect();
     println!("Result:");
-    println!("{:?}", result);
+    println!("{:?}", results);
 }
 
+#[allow(dead_code)]
 struct PipelineManager {
     adapter: wgpu::Adapter,
     device: wgpu::Device,
