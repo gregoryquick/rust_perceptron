@@ -7,10 +7,6 @@ use futures::executor::block_on;
 use std::thread;
 
 fn main() {
-    
-    let training_data = data::load_data("train").unwrap();
-    println!("{}",training_data[0].classification);
-
     //Default stack size is 8 * 1024 * 1024
     const STACK_SIZE: usize = 8 * 1024 * 1024;    
     // Spawn thread with explicit stack size
@@ -31,7 +27,7 @@ fn run() {
     //Make gpu pipelines
     let pipeline_manager = block_on(PipelineManager::new(DATA_DIM, OUTPUT_DIM));
     
-    //Make network weights and a test input
+    //Make network weights
     use rand::distributions::Uniform;
     let mut rng = rand::thread_rng();
     let dist = Uniform::new(-1.0,1.0);
@@ -43,21 +39,23 @@ fn run() {
         }
         vector
     };
-    //println!("Weights:");
-    //println!("{:?}", network_weights);
-    
+
+    //Load data
+    let training_data = data::load_data("train").unwrap();
     const BATCH_SIZE: usize = 4;
+    let batch_data: Vec<data::MnistImage> = training_data.into_iter().choose_multiple(&mut rng, BATCH_SIZE);
+    let batch_labels: Vec<u8> = batch_data.iter().map(|x| x.classification).collect();
+    let batch_images: Vec<Vec<f32>> = batch_data.into_iter().map(|x| x.image).collect();
+    
     let input_vector = {
         const DATA_SIZE: usize = DATA_DIM * BATCH_SIZE;
         let mut vector: [f32; DATA_SIZE] = [0f32; DATA_SIZE];
-        for num in vector.iter_mut() {
-            *num = rng.sample(dist);
+        for (loc, data) in vector.iter_mut().zip(batch_images.into_iter().flatten()) {
+            *loc = data;
         }
         vector
     };
-    //println!("Input:");
-    //println!("{:?}", input_vector);
-    
+
     //Compute forward pass result
     let forward_pipeline = pipeline_manager.new_pipeline::<pipelines::ForwardPass, f32>(BATCH_SIZE);
 

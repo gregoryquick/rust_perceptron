@@ -3,13 +3,13 @@ use std::fs::File;
 use std::io::{Cursor, Read};
 
 #[derive(Debug)]
-pub struct MnistData {
-    pub sizes: Vec<i32>,
+struct MnistData {
+    sizes: Vec<i32>,
     data: Vec<u8>,
 }
 
 impl MnistData {
-    pub fn new(file: &mut File) -> Result<MnistData, std::io::Error> {
+    fn new(file: &mut File) -> Result<MnistData, std::io::Error> {
         let mut contents: Vec<u8> = Vec::new();
         file.read_to_end(&mut contents)?;
         let mut r = Cursor::new(&contents);
