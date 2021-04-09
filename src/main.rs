@@ -1,52 +1,136 @@
+#![feature(const_generics)]
 mod pipelines;
 mod data;
+
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+mod arrays {
+    use std::{convert::TryInto, marker::PhantomData};
+
+    use serde::{
+        de::{SeqAccess, Visitor},
+        ser::SerializeTuple,
+        Deserialize, Deserializer, Serialize, Serializer,
+    };
+    pub fn serialize<S: Serializer, T: Serialize, const N: usize>(
+        data: &[T; N],
+        ser: S,
+    ) -> Result<S::Ok, S::Error> {
+        let mut s = ser.serialize_tuple(N)?;
+        for item in data {
+            s.serialize_element(item)?;
+        }
+        s.end()
+    }
+
+    struct ArrayVisitor<T, const N: usize>(PhantomData<T>);
+
+    impl<'de, T, const N: usize> Visitor<'de> for ArrayVisitor<T, N>
+    where
+        T: Deserialize<'de>,
+    {
+        type Value = [T; N];
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str(&format!("an array of length {}", N))
+        }
+
+        #[inline]
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            // can be optimized using MaybeUninit
+            let mut data = Vec::with_capacity(N);
+            for _ in 0..N {
+                match (seq.next_element())? {
+                    Some(val) => data.push(val),
+                    None => return Err(serde::de::Error::invalid_length(N, &self)),
+                }
+            }
+            match data.try_into() {
+                Ok(arr) => Ok(arr),
+                Err(_) => unreachable!(),
+            }
+        }
+    }
+    pub fn deserialize<'de, D, T, const N: usize>(deserializer: D) -> Result<[T; N], D::Error>
+    where
+        D: Deserializer<'de>,
+        T: Deserialize<'de>,
+    {
+        deserializer.deserialize_tuple(N, ArrayVisitor::<T, N>(PhantomData))
+    }
+}
 
 use rand::prelude::*;
 
 use futures::executor::block_on;
 use std::thread;
+use std::fs::File;
+
 
 fn main() {
     //Default stack size is 8 * 1024 * 1024
     const STACK_SIZE: usize = 8 * 1024 * 1024;    
-    // Spawn thread with explicit stack size
+    //Spawn thread with explicit stack size
     let child = thread::Builder::new()
         .stack_size(STACK_SIZE)
-        .spawn(run)
+        .spawn(|| {run(false)})
         .unwrap();
 
     // Wait for thread to join
     child.join().unwrap();
 }
 
-fn run() {
+fn run(generate_new_weights: bool) {
     //Network parameters
     const DATA_DIM: usize = 28 * 28;
     const OUTPUT_DIM: usize = 10;
 
-    //Make gpu pipelines
-    let pipeline_manager = block_on(PipelineManager::new(DATA_DIM, OUTPUT_DIM));
-    
-    //Make network weights
+    //~ ~ C O D E ~ ~
     use rand::distributions::Uniform;
+    let pipeline_manager = block_on(PipelineManager::new(DATA_DIM, OUTPUT_DIM));
     let mut rng = rand::thread_rng();
+
+    
+    //Get network weights
+    const WEIGHT_SIZE: usize = DATA_DIM * OUTPUT_DIM;
     let dist = Uniform::new(-1.0,1.0);
+    #[derive(Serialize, Deserialize, Debug)]
+    struct Weights<const N: usize> {
+        #[serde(with = "arrays")]
+        arr: [f32; N],
+    }
+
     let network_weights = {
-        const WEIGHT_SIZE: usize = DATA_DIM * OUTPUT_DIM;
         let mut vector: [f32; WEIGHT_SIZE] = [0f32; WEIGHT_SIZE];
-        for num in vector.iter_mut() {
-            *num = rng.sample(dist);
+        
+        if generate_new_weights {
+            for num in vector.iter_mut() {
+                    *num = rng.sample(dist);
+            }
+            let file = File::create("weights/network.bin").unwrap();
+            bincode::serialize_into(&file, &Weights::<WEIGHT_SIZE>{arr: vector}).unwrap();
+        } else {
+            let file = File::open("weights/network.bin").unwrap();
+            let weight_data: Weights::<WEIGHT_SIZE> = bincode::deserialize_from(&file).unwrap();
+            for (loc, data) in vector.iter_mut().zip(weight_data.arr.iter()) {
+                *loc = *data;
+            }
         }
+        
         vector
     };
-
+    
     //Load data
     let training_data = data::load_data("train").unwrap();
-    const BATCH_SIZE: usize = 4;
+    const BATCH_SIZE: usize = 16;
     let batch_data: Vec<data::MnistImage> = training_data.into_iter().choose_multiple(&mut rng, BATCH_SIZE);
     let batch_labels: Vec<u8> = batch_data.iter().map(|x| x.classification).collect();
-    let batch_images: Vec<Vec<f32>> = batch_data.into_iter().map(|x| x.image).collect();
-    
+    let batch_images: Vec<Vec<f32>> = batch_data.into_iter().map(|x| x.image).collect(); 
+
     let input_vector = {
         const DATA_SIZE: usize = DATA_DIM * BATCH_SIZE;
         let mut vector: [f32; DATA_SIZE] = [0f32; DATA_SIZE];
