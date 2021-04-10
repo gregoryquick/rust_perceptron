@@ -126,7 +126,7 @@ fn run(generate_new_weights: bool) {
     
     //Load data
     let training_data = data::load_data("train").unwrap();
-    const BATCH_SIZE: usize = 16;
+    const BATCH_SIZE: usize = 1;
     let batch_data: Vec<data::MnistImage> = training_data.into_iter().choose_multiple(&mut rng, BATCH_SIZE);
     let batch_labels: Vec<u8> = batch_data.iter().map(|x| x.classification).collect();
     let batch_images: Vec<Vec<f32>> = batch_data.into_iter().map(|x| x.image).collect(); 
