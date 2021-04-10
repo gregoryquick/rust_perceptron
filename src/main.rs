@@ -140,14 +140,19 @@ fn run(generate_new_weights: bool) {
         vector
     };
 
+    //Compute backward pass
+    let backward_pipeline = pipeline_manager.new_pipeline::<pipelines::BackwardPass, f32>(BATCH_SIZE);
+    let forward_pipeline = pipeline_manager.new_pipeline::<pipelines::ForwardPass, f32>(BATCH_SIZE);
+    let backprop_result = block_on(pipeline_manager.run_backward_pass::<f32>(forward_pipeline, backward_pipeline, &network_weights, &input_vector)).unwrap();
+    println!("New weights:");
+    println!("{:?}", backprop_result);
+
     //Compute forward pass result
     let forward_pipeline = pipeline_manager.new_pipeline::<pipelines::ForwardPass, f32>(BATCH_SIZE);
-    let backward_pipeline = pipeline_manager.new_pipeline::<pipelines::BackwardPass, f32>(BATCH_SIZE);
-
-    let result = block_on(pipeline_manager.run_forward_pass::<f32>(forward_pipeline, &network_weights, &input_vector)).unwrap();
-    let results: Vec<&[f32]> = result.chunks(OUTPUT_DIM).collect();
-    println!("Result:");
-    println!("{:?}", results);
+    let forwardprop_result = block_on(pipeline_manager.run_forward_pass::<f32>(forward_pipeline, &network_weights, &input_vector)).unwrap();
+    let predicted_labels: Vec<&[f32]> = forwardprop_result.chunks(OUTPUT_DIM).collect();
+    println!("Predicted labels:");
+    println!("{:?}", predicted_labels);
 }
 
 #[allow(dead_code)]
@@ -205,7 +210,6 @@ impl PipelineManager{
         let buffers = pipeline.get_buffers();
         let batch_size: usize = pipeline.get_batch_size();
 
-
         let weight_data_buffer = self.device.create_buffer_init(
             &BufferInitDescriptor {
                 label: None,
@@ -243,7 +247,7 @@ impl PipelineManager{
         compute_pass.set_pipeline(pipeline.get_compute_pipeline());
         let bind_groups = pipeline.get_bind_groups();
         compute_pass.set_bind_group(0, &bind_groups[0], &[]);
-        //Work groups of x=output_size, Y = batch_size, Z = 1
+        //Work groups of X = output_size, Y = batch_size, Z = 1
         compute_pass.dispatch(self.network_shape.1 as u32, batch_size as u32, 1);
         
         //Encoder borrow is gone now!
@@ -294,4 +298,158 @@ impl PipelineManager{
             }
         }
     }
+
+    async fn run_backward_pass<T: bytemuck::Pod>(&self, forward_pipeline: pipelines::ForwardPass, backward_pipeline: pipelines::BackwardPass, network_weights: &[T], input_data: &[T]) -> Option<Vec<T>> {
+        use pipelines::*;
+        let type_size = std::mem::size_of::<T>();
+
+        //Pannic if pipelines have mismatched batch size
+        let batch_size: usize = forward_pipeline.get_batch_size();
+        assert!(batch_size == backward_pipeline.get_batch_size());
+
+
+        //Create command encoder
+        let mut encoder = self.device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor {
+                label: None 
+            }
+        );
+
+        //Load data into forwad pass gpu
+        use wgpu::util::{BufferInitDescriptor, DeviceExt};
+        let forward_buffers = forward_pipeline.get_buffers();
+
+        let weight_data_buffer = self.device.create_buffer_init(
+            &BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(network_weights),
+                usage: wgpu::BufferUsage::COPY_SRC,
+            }
+        );
+        encoder.copy_buffer_to_buffer(
+            &weight_data_buffer, 0,
+            &forward_buffers[1], 0,
+            (type_size * self.network_shape.0 * self.network_shape.1) as wgpu::BufferAddress,
+        );
+        
+        let input_data_buffer = self.device.create_buffer_init(
+            &BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(input_data),
+                usage: wgpu::BufferUsage::COPY_SRC,
+            }
+        );
+        encoder.copy_buffer_to_buffer(
+            &input_data_buffer, 0,
+            &forward_buffers[2], 0,
+            (type_size * self.network_shape.0 * batch_size) as wgpu::BufferAddress,
+        );
+
+        
+        //Create the compute pass for the forward pass (Mutably borrows encoder)
+        let mut forward_compute_pass = encoder.begin_compute_pass(
+            &wgpu::ComputePassDescriptor { 
+                label: None 
+            }
+        );
+
+        //Add forward pass compute pipeline to compute pass
+        forward_compute_pass.set_pipeline(forward_pipeline.get_compute_pipeline());
+        let bind_groups = forward_pipeline.get_bind_groups();
+        forward_compute_pass.set_bind_group(0, &bind_groups[0], &[]);
+        //Work groups of X = output_size, Y = batch_size, Z = 1
+        forward_compute_pass.dispatch(self.network_shape.1 as u32, batch_size as u32, 1);
+        
+        //Encoder borrow is gone now!
+        drop(forward_compute_pass);
+
+        //Load data shared into backward pass 
+        let backward_buffers = backward_pipeline.get_buffers();
+
+        encoder.copy_buffer_to_buffer(
+            &weight_data_buffer, 0,
+            &backward_buffers[1], 0,
+            (type_size * self.network_shape.0 * self.network_shape.1) as wgpu::BufferAddress,
+        );
+        
+        encoder.copy_buffer_to_buffer(
+            &input_data_buffer, 0,
+            &backward_buffers[2], 0,
+            (type_size * self.network_shape.0 * batch_size) as wgpu::BufferAddress,
+        );
+        
+        //Copy forward pass data to backward pass
+        encoder.copy_buffer_to_buffer(
+            &forward_buffers[3], 0,
+            &backward_buffers[3], 0,
+            (type_size * self.network_shape.1 * batch_size) as wgpu::BufferAddress,
+        );
+
+        //TODO Need to turn label data into proper format for loading
+
+        //Create the compute pass for the backward pass (Mutably borrows encoder)
+        let mut backward_compute_pass = encoder.begin_compute_pass(
+            &wgpu::ComputePassDescriptor { 
+                label: None 
+            }
+        );
+
+        //Add compute pipeline to compute pass
+        backward_compute_pass.set_pipeline(backward_pipeline.get_compute_pipeline());
+        let bind_groups = backward_pipeline.get_bind_groups();
+        backward_compute_pass.set_bind_group(0, &bind_groups[0], &[]);
+        backward_compute_pass.set_bind_group(1, &bind_groups[1], &[]);
+        //Work groups of X = 1, Y = 1, Z = 1
+        backward_compute_pass.dispatch(1, 1, 1);
+
+        //Encoder borrow is gone now!
+        drop(backward_compute_pass);
+
+        //Copy output from gpu buffer to staging buffer on cpu
+        let staging_buffer = self.device.create_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("Staging buffer"),
+                size: (type_size * self.network_shape.0 * self.network_shape.1) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
+                mapped_at_creation: false,
+            }
+        );
+        encoder.copy_buffer_to_buffer(
+            &backward_buffers[5], 0,
+            &staging_buffer, 0,
+            (type_size * self.network_shape.0 * self.network_shape.1) as wgpu::BufferAddress,
+        );
+        
+        //Finish building command encoder and submit
+        self.queue.submit(Some(encoder.finish()));
+
+        //Create future of the computation
+        let buffer_slice = staging_buffer.slice(..);
+        let buffer_future = buffer_slice.map_async(wgpu::MapMode::Read);
+
+        //Wait for computation to complete
+        self.device.poll(wgpu::Maintain::Wait);
+
+
+        //Handle computation result and return
+        match buffer_future.await {
+            Ok(()) => {
+                //Get buffer contents
+                let data = buffer_slice.get_mapped_range();
+                let result: Vec<T> = data.chunks_exact(type_size).map(|b| *bytemuck::from_bytes::<T>(b)).collect();
+                
+                //Drop mapped view
+                drop(data);
+                //Unmap buffer
+                staging_buffer.unmap();
+
+                Some(result)
+            }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                None
+            }
+        }
+    }
+
 }

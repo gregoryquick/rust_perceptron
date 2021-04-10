@@ -240,16 +240,6 @@ impl Pipeline for BackwardPass {
         );
         buffers.push(input_data); //2-2-0
 
-        let label_data = device.create_buffer(
-            &wgpu::BufferDescriptor {
-                label: Some("Label Data"),
-                size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
-                mapped_at_creation: false,
-            }
-        );
-        buffers.push(label_data); //3-3-0
-
         let prediction_data = device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("Prediction Data"),
@@ -258,7 +248,17 @@ impl Pipeline for BackwardPass {
                 mapped_at_creation: false,
             }
         );
-        buffers.push(prediction_data); //4-4-0
+        buffers.push(prediction_data); //3-3-0
+
+        let label_data = device.create_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("Label Data"),
+                size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
+                mapped_at_creation: false,
+            }
+        );
+        buffers.push(label_data); //4-4-0
 
         let output_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
