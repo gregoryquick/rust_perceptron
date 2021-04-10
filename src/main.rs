@@ -142,6 +142,7 @@ fn run(generate_new_weights: bool) {
 
     //Compute forward pass result
     let forward_pipeline = pipeline_manager.new_pipeline::<pipelines::ForwardPass, f32>(BATCH_SIZE);
+    let backward_pipeline = pipeline_manager.new_pipeline::<pipelines::BackwardPass, f32>(BATCH_SIZE);
 
     let result = block_on(pipeline_manager.run_forward_pass::<f32>(forward_pipeline, &network_weights, &input_vector)).unwrap();
     let results: Vec<&[f32]> = result.chunks(OUTPUT_DIM).collect();
