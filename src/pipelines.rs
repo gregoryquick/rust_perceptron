@@ -217,7 +217,8 @@ impl Pipeline for BackwardPass {
                 usage: wgpu::BufferUsage::UNIFORM,
             }
         );
-        buffers.push(uniform_buffer); //0
+        //Numbers are buffer[i]-binding_i-set_i
+        buffers.push(uniform_buffer); //0-0-0
         
         let weight_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -227,7 +228,7 @@ impl Pipeline for BackwardPass {
                 mapped_at_creation: false,
             }
         );
-        buffers.push(weight_buffer); //1
+        buffers.push(weight_buffer); //1-1-0
 
         let input_data = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -237,7 +238,7 @@ impl Pipeline for BackwardPass {
                 mapped_at_creation: false,
             }
         );
-        buffers.push(input_data); //2
+        buffers.push(input_data); //2-2-0
 
         let label_data = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -247,7 +248,7 @@ impl Pipeline for BackwardPass {
                 mapped_at_creation: false,
             }
         );
-        buffers.push(label_data); //3
+        buffers.push(label_data); //3-3-0
 
         let prediction_data = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -257,7 +258,7 @@ impl Pipeline for BackwardPass {
                 mapped_at_creation: false,
             }
         );
-        buffers.push(prediction_data); //4
+        buffers.push(prediction_data); //4-4-0
 
         let output_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -267,14 +268,14 @@ impl Pipeline for BackwardPass {
                 mapped_at_creation: false,
             }
         );
-        buffers.push(output_buffer); //5
+        buffers.push(output_buffer); //5-0-1
 
 
         //Create buffer bind group for pipeline
         let mut bind_groups: Vec<wgpu::BindGroup> = Vec::new();
-        let bind_group_layout = device.create_bind_group_layout(
+        let bind_group_layout_0 = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
-                label: None,
+                label: Some("Layout 0"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::COMPUTE,
@@ -332,25 +333,13 @@ impl Pipeline for BackwardPass {
                         min_binding_size: wgpu::BufferSize::new(0),
                     },
                     count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 5,
-                    visibility: wgpu::ShaderStage::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage {
-                            read_only: false,
-                        },
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(0),
-                    },
-                    count: None,
                 },],
             }
         );
-        let bind_group = device.create_bind_group(
+        let bind_group_0 = device.create_bind_group(
             &wgpu::BindGroupDescriptor {
-                label: Some("Backward Pass bind group"),
-                layout: &bind_group_layout,
+                label: Some("Backward Pass bind group 0"),
+                layout: &bind_group_layout_0,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: buffers[0].as_entire_binding(),
@@ -370,14 +359,40 @@ impl Pipeline for BackwardPass {
                 wgpu::BindGroupEntry {
                     binding: 4,
                     resource: buffers[4].as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
+                },],
+            }
+        );
+        bind_groups.push(bind_group_0);
+
+        let bind_group_layout_1 = device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                label: Some("Layout 1"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStage::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage {
+                            read_only: false,
+                        },
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(0),
+                    },
+                    count: None,
+                },],
+            }
+        );
+        let bind_group_1 = device.create_bind_group(
+            &wgpu::BindGroupDescriptor {
+                label: Some("Backward Pass bind group 1"),
+                layout: &bind_group_layout_1,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
                     resource: buffers[5].as_entire_binding(),
                 },],
             }
         );
-        bind_groups.push(bind_group);
+        bind_groups.push(bind_group_1);
+
 
         //Create compute pipeline
         let cs_src = include_str!("shaders/backward.comp");
@@ -394,7 +409,7 @@ impl Pipeline for BackwardPass {
         let pipeline_layout = device.create_pipeline_layout(
             &wgpu::PipelineLayoutDescriptor {
                 label: None,
-                bind_group_layouts: &[&bind_group_layout],
+                bind_group_layouts: &[&bind_group_layout_0,&bind_group_layout_1],
                 push_constant_ranges: &[],
             }
         );

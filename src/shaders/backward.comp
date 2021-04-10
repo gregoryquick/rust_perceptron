@@ -21,7 +21,7 @@ layout(set = 0, binding = 4) buffer PredictedLabels {
     float[] predicted_labels;
 };
 
-layout(set = 0, binding = 5) buffer Target {
+layout(set = 1, binding = 0) buffer Target {
     float[] target;
 };
 
