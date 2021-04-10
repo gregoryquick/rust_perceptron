@@ -142,7 +142,7 @@ fn run(generate_new_weights: bool) {
 
     //Compute forward pass result
     let forward_pipeline = pipeline_manager.new_pipeline::<pipelines::ForwardPass, f32>(BATCH_SIZE);
-    let backward_pipeline = pipeline_manager.new_pipeline::<pipelines::BackwardPass, f32>(BATCH_SIZE);
+    //let backward_pipeline = pipeline_manager.new_pipeline::<pipelines::BackwardPass, f32>(BATCH_SIZE);
 
     let result = block_on(pipeline_manager.run_forward_pass::<f32>(forward_pipeline, &network_weights, &input_vector)).unwrap();
     let results: Vec<&[f32]> = result.chunks(OUTPUT_DIM).collect();
@@ -241,7 +241,8 @@ impl PipelineManager{
         
         //Add compute pipeline to compute pass
         compute_pass.set_pipeline(pipeline.get_compute_pipeline());
-        compute_pass.set_bind_group(0, pipeline.get_bind_group(), &[]);
+        let bind_groups = pipeline.get_bind_groups();
+        compute_pass.set_bind_group(0, &bind_groups[0], &[]);
         //Work groups of x=output_size, Y = batch_size, Z = 1
         compute_pass.dispatch(self.network_shape.1 as u32, batch_size as u32, 1);
         

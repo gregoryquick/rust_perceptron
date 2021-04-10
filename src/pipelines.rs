@@ -5,7 +5,7 @@ pub trait Pipeline {
 
     fn get_batch_size(&self) -> usize;
 
-    fn get_bind_group(&self) -> &wgpu::BindGroup;
+    fn get_bind_groups(&self) -> &Vec<wgpu::BindGroup>;
 
     fn get_compute_pipeline(&self) -> &wgpu::ComputePipeline;
 }
@@ -13,7 +13,7 @@ pub trait Pipeline {
 pub struct ForwardPass {
     buffers: Vec<wgpu::Buffer>,
     batch_size: usize,
-    bind_group: wgpu::BindGroup,
+    bind_groups: Vec<wgpu::BindGroup>,
     compute_pipeline: wgpu::ComputePipeline,
 }
 
@@ -65,6 +65,7 @@ impl Pipeline for ForwardPass {
         buffers.push(output_buffer);
         
         //Create buffer bind group for pipeline
+        let mut bind_groups: Vec<wgpu::BindGroup> = Vec::new();
         let bind_group_layout = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
                 label: None,
@@ -138,6 +139,7 @@ impl Pipeline for ForwardPass {
                 },],
             }
         );
+        bind_groups.push(bind_group);
 
         //Create compute pipeline
         let cs_src = include_str!("shaders/forward.comp");
@@ -170,7 +172,7 @@ impl Pipeline for ForwardPass {
         ForwardPass{
             buffers,
             batch_size,
-            bind_group,
+            bind_groups,
             compute_pipeline,
         }
     }
@@ -184,8 +186,8 @@ impl Pipeline for ForwardPass {
     }
 
 
-    fn get_bind_group(&self) -> &wgpu::BindGroup{
-        &self.bind_group
+    fn get_bind_groups(&self) -> &Vec<wgpu::BindGroup>{
+        &self.bind_groups
     }
 
     fn get_compute_pipeline(&self) -> &wgpu::ComputePipeline{
@@ -196,7 +198,7 @@ impl Pipeline for ForwardPass {
 pub struct BackwardPass {
     buffers: Vec<wgpu::Buffer>,
     batch_size: usize,
-    bind_group: wgpu::BindGroup,
+    bind_groups: Vec<wgpu::BindGroup>,
     compute_pipeline: wgpu::ComputePipeline,
 }
 
@@ -269,6 +271,7 @@ impl Pipeline for BackwardPass {
 
 
         //Create buffer bind group for pipeline
+        let mut bind_groups: Vec<wgpu::BindGroup> = Vec::new();
         let bind_group_layout = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
                 label: None,
@@ -374,6 +377,7 @@ impl Pipeline for BackwardPass {
                 },],
             }
         );
+        bind_groups.push(bind_group);
 
         //Create compute pipeline
         let cs_src = include_str!("shaders/backward.comp");
@@ -407,7 +411,7 @@ impl Pipeline for BackwardPass {
         BackwardPass{
             buffers,
             batch_size,
-            bind_group,
+            bind_groups,
             compute_pipeline,
         }
     }
@@ -421,8 +425,8 @@ impl Pipeline for BackwardPass {
     }
 
 
-    fn get_bind_group(&self) -> &wgpu::BindGroup{
-        &self.bind_group
+    fn get_bind_groups(&self) -> &Vec<wgpu::BindGroup>{
+        &self.bind_groups
     }
 
     fn get_compute_pipeline(&self) -> &wgpu::ComputePipeline{
