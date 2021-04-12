@@ -17,15 +17,11 @@ layout(set = 0, binding = 3) buffer IntermediateData {
     float[] intermediate_data;
 };
 
-layout(set = 0, binding = 4) buffer LabelData {
-    float[] label_data;
+layout(set = 0, binding = 4) buffer LabelDifference {
+    float[] label_difference;
 };
 
-layout(set = 1, binding = 0) buffer PredictedLabels {
-    float[] predicted_labels;
-};
-
-layout(set = 1, binding = 1) buffer Target {
+layout(set = 1, binding = 0) buffer Target {
     float[] target;
 };
 

@@ -250,25 +250,15 @@ impl Pipeline for BackwardPass {
         );
         buffers.push(intermediate_data); //3-3-0
 
-        let label_data = device.create_buffer(
+        let label_difference = device.create_buffer(
             &wgpu::BufferDescriptor {
-                label: Some("Label Data"),
+                label: Some("Label Difference"),
                 size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
                 usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
                 mapped_at_creation: false,
             }
         );
-        buffers.push(label_data); //4-4-0
-
-        let prediction_buffer = device.create_buffer(
-            &wgpu::BufferDescriptor {
-                label: Some("Prediction buffer"),
-                size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
-                mapped_at_creation: false,
-            }
-        );
-        buffers.push(prediction_buffer); //5-0-1
+        buffers.push(label_difference); //4-4-0
 
         let output_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -278,7 +268,7 @@ impl Pipeline for BackwardPass {
                 mapped_at_creation: false,
             }
         );
-        buffers.push(output_buffer); //6-1-1
+        buffers.push(output_buffer); //5-0-1
 
 
         //Create buffer bind group for pipeline
@@ -388,18 +378,6 @@ impl Pipeline for BackwardPass {
                         min_binding_size: wgpu::BufferSize::new(0),
                     },
                     count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStage::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage {
-                            read_only: false,
-                        },
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(0),
-                    },
-                    count: None,
                 },],
             }
         );
@@ -410,15 +388,10 @@ impl Pipeline for BackwardPass {
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: buffers[5].as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: buffers[6].as_entire_binding(),
                 },],
             }
         );
         bind_groups.push(bind_group_1);
-
 
         //Create compute pipeline
         let cs_src = include_str!("shaders/backward.comp");
@@ -474,3 +447,191 @@ impl Pipeline for BackwardPass {
         &self.compute_pipeline
     }
 }
+
+pub struct DifferenceCalculation {
+    buffers: Vec<wgpu::Buffer>,
+    batch_size: usize,
+    bind_groups: Vec<wgpu::BindGroup>,
+    compute_pipeline: wgpu::ComputePipeline,
+}
+
+impl Pipeline for DifferenceCalculation {
+    fn new<T: bytemuck::Pod>(device: &wgpu::Device, input_size: usize, output_size: usize, batch_size: usize,) -> Self{
+        //Create buffers
+        use wgpu::util::{BufferInitDescriptor, DeviceExt};
+        let mut buffers: Vec<wgpu::Buffer> = Vec::new();
+        let type_size = std::mem::size_of::<T>();
+
+        let uniform_data = [output_size as u32, batch_size as u32];
+        let uniform_buffer = device.create_buffer_init(
+            &BufferInitDescriptor {
+                label: Some("Uniform Buffer"),
+                contents: bytemuck::bytes_of(&uniform_data),
+                usage: wgpu::BufferUsage::UNIFORM,
+            }
+        );
+        //Numbers are buffer[i]-binding_i-set_i
+        buffers.push(uniform_buffer); //0-0-0
+        
+        let intermediate_data = device.create_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("Intermediate Data"),
+                size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
+                mapped_at_creation: false,
+            }
+        );
+        buffers.push(intermediate_data); //1-1-0
+
+        let label_data = device.create_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("Label Data"),
+                size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
+                mapped_at_creation: false,
+            }
+        );
+        buffers.push(label_data); //2-2-0
+
+        let output_buffer = device.create_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("Output buffer"),
+                size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                mapped_at_creation: false,
+            }
+        );
+        buffers.push(output_buffer); //3-3-0
+
+        let mut bind_groups: Vec<wgpu::BindGroup> = Vec::new();
+        let bind_group_layout_0 = device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                label: Some("Layout 0"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStage::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(0),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStage::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage {
+                            read_only: true,
+                        },
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(0),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStage::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage {
+                            read_only: true,
+                        },
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(0),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStage::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage {
+                            read_only: false,
+                        },
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(0),
+                    },
+                    count: None,
+                },],
+            }
+        );
+
+        let bind_group_0 = device.create_bind_group(
+            &wgpu::BindGroupDescriptor {
+                label: Some("Backward Pass bind group 0"),
+                layout: &bind_group_layout_0,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffers[0].as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers[1].as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: buffers[2].as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: buffers[3].as_entire_binding(),
+                },],
+            }
+        );
+        bind_groups.push(bind_group_0);
+
+        //Create compute pipeline
+        let cs_src = include_str!("shaders/difference.comp");
+        let mut compiler = shaderc::Compiler::new().unwrap();
+        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "shader.comp", "main", None).unwrap();
+        let cs_module = device.create_shader_module(
+            &wgpu::ShaderModuleDescriptor {
+                label: None,
+                source: wgpu::util::make_spirv(cs_spirv.as_binary_u8()),
+                flags: wgpu::ShaderFlags::empty(),
+            }
+        );
+        
+        let pipeline_layout = device.create_pipeline_layout(
+            &wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[&bind_group_layout_0],
+                push_constant_ranges: &[],
+            }
+        );
+        
+        let compute_pipeline = device.create_compute_pipeline(
+            &wgpu::ComputePipelineDescriptor {
+                label: Some("Difference Calculation pipeline"),
+                layout: Some(&pipeline_layout),
+                module: &cs_module,
+                entry_point: "main",
+            }
+        );
+
+        DifferenceCalculation {
+            buffers,
+            batch_size,
+            bind_groups,
+            compute_pipeline,
+        }
+    }
+
+    fn get_buffers(&self) -> &Vec<wgpu::Buffer>{
+        &self.buffers
+    }
+
+    fn get_batch_size(&self) -> usize {
+        self.batch_size
+    }
+
+
+    fn get_bind_groups(&self) -> &Vec<wgpu::BindGroup>{
+        &self.bind_groups
+    }
+
+    fn get_compute_pipeline(&self) -> &wgpu::ComputePipeline{
+        &self.compute_pipeline
+    }
+}
+

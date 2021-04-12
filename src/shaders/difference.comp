@@ -1,0 +1,27 @@
+#version 450
+layout(set = 0, binding = 0) uniform UniformBuffer {
+    uint output_size;
+    uint batch_size;
+};
+
+layout(set = 0, binding = 1) buffer IntermediateData {
+    float[] intermediate_data;
+};
+
+layout(set = 0, binding = 2) buffer LabelData {
+    float[] label_data;
+};
+
+layout(set = 0, binding = 3) buffer Target {
+    float[] target;
+};
+
+
+float Lrelu(float x) {
+    return (x > 0.0) ? x : 0.1 * x;
+}
+void main() {
+    uint row_index = gl_GlobalInvocationID.x;
+    uint collumn_index = gl_GlobalInvocationID.y;
+    target[collumn_index * output_size + row_index] = label_data[collumn_index * output_size + row_index] - Lrelu(intermediate_data[collumn_index * output_size + row_index]);
+}

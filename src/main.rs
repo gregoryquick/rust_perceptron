@@ -142,8 +142,9 @@ fn run(generate_new_weights: bool) {
 
     //Compute backward pass
     let backward_pipeline = pipeline_manager.new_pipeline::<pipelines::BackwardPass, f32>(BATCH_SIZE);
+    let difference_pipeline = pipeline_manager.new_pipeline::<pipelines::DifferenceCalculation, f32>(BATCH_SIZE);
     let forward_pipeline = pipeline_manager.new_pipeline::<pipelines::ForwardPass, f32>(BATCH_SIZE);
-    let backprop_result = block_on(pipeline_manager.run_backward_pass::<f32>(forward_pipeline, backward_pipeline, &network_weights, &input_vector)).unwrap();
+    let backprop_result = block_on(pipeline_manager.run_backward_pass::<f32>(forward_pipeline, difference_pipeline, backward_pipeline, &network_weights, &input_vector)).unwrap();
     println!("New weights:");
     println!("{:?}", backprop_result);
 
@@ -310,7 +311,7 @@ impl PipelineManager{
         }
     }
 
-    async fn run_backward_pass<T: bytemuck::Pod>(&self, forward_pipeline: pipelines::ForwardPass, backward_pipeline: pipelines::BackwardPass, network_weights: &[T], input_data: &[T]) -> Option<Vec<T>> {
+    async fn run_backward_pass<T: bytemuck::Pod>(&self, forward_pipeline: pipelines::ForwardPass, difference_pipeline: pipelines::DifferenceCalculation, backward_pipeline: pipelines::BackwardPass, network_weights: &[T], input_data: &[T]) -> Option<Vec<T>> {
         use pipelines::*;
         let type_size = std::mem::size_of::<T>();
 
@@ -374,6 +375,33 @@ impl PipelineManager{
         //Encoder borrow is gone now!
         drop(forward_compute_pass);
 
+        //Copy intermediate data to difference compute pass
+        let error_buffers = difference_pipeline.get_buffers();
+
+        encoder.copy_buffer_to_buffer(
+            &forward_buffers[3], 0,
+            &error_buffers[1], 0,
+            (type_size * self.network_shape.1 * batch_size) as wgpu::BufferAddress,
+        );
+        //TODO copy vectorized label data to compute pass
+
+        
+        //Create the compute pass for the error pass (Mutably borrows encoder)
+        let mut difference_compute_pass = encoder.begin_compute_pass(
+            &wgpu::ComputePassDescriptor { 
+                label: None 
+            }
+        );
+
+        difference_compute_pass.set_pipeline(difference_pipeline.get_compute_pipeline());
+        let bind_groups = difference_pipeline.get_bind_groups();
+        difference_compute_pass.set_bind_group(0, &bind_groups[0], &[]);
+        //Work groups of X = output_size, Y = batch_size, Z = 1
+        difference_compute_pass.dispatch(self.network_shape.1 as u32, batch_size as u32, 1);
+
+        //Encoder borrow is gone now!
+        drop(difference_compute_pass);
+
         //Load data shared into backward pass 
         let backward_buffers = backward_pipeline.get_buffers();
 
@@ -396,7 +424,13 @@ impl PipelineManager{
             (type_size * self.network_shape.1 * batch_size) as wgpu::BufferAddress,
         );
 
-        //TODO Need to turn label data into proper format for loading
+        //Copy error data to backard pass
+        encoder.copy_buffer_to_buffer(
+            &error_buffers[3], 0,
+            &backward_buffers[4], 0,
+            (type_size * self.network_shape.1 * batch_size) as wgpu::BufferAddress,
+        );
+
 
         //Create the compute pass for the backward pass (Mutably borrows encoder)
         let mut backward_compute_pass = encoder.begin_compute_pass(
@@ -426,7 +460,7 @@ impl PipelineManager{
             }
         );
         encoder.copy_buffer_to_buffer(
-            &backward_buffers[6], 0,
+            &backward_buffers[5], 0,
             &staging_buffer, 0,
             (type_size * self.network_shape.0 * self.network_shape.1) as wgpu::BufferAddress,
         );
