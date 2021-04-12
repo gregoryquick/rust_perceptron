@@ -13,17 +13,39 @@ layout(set = 0, binding = 2) buffer InputData {
     float[] input_data;
 };
 
-layout(set = 0, binding = 3) buffer PredictedLabels {
-    float[] predicted_labels;
+layout(set = 0, binding = 3) buffer IntermediateData {
+    float[] intermediate_data;
 };
 
 layout(set = 0, binding = 4) buffer LabelData {
     float[] label_data;
 };
 
-layout(set = 1, binding = 0) buffer Target {
+layout(set = 1, binding = 0) buffer PredictedLabels {
+    float[] predicted_labels;
+};
+
+layout(set = 1, binding = 1) buffer Target {
     float[] target;
 };
 
+float learning_rate = 0.1;
+
+float grad(uint x_index ,uint y_index){
+    float accumulator = 0.0;
+    for(uint i; i < batch_size; i++){
+        accumulator += 0.0;
+    }
+    return accumulator;
+}
+
+float LreluPrime(float x) {
+    float OffZeroGrads = (x > 0.0) ? 1.0 : 0.1;
+    return (x == 0.0) ? 0.9 : OffZeroGrads;
+}
+
 void main() {
+    uint row_index = gl_GlobalInvocationID.x;
+    uint collumn_index = gl_GlobalInvocationID.y;
+    target[collumn_index * output_size + row_index] = network_weights[collumn_index * output_size + row_index];
 }

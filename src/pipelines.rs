@@ -240,15 +240,15 @@ impl Pipeline for BackwardPass {
         );
         buffers.push(input_data); //2-2-0
 
-        let prediction_data = device.create_buffer(
+        let intermediate_data = device.create_buffer(
             &wgpu::BufferDescriptor {
-                label: Some("Prediction Data"),
+                label: Some("Intermediate Data"),
                 size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
                 usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
                 mapped_at_creation: false,
             }
         );
-        buffers.push(prediction_data); //3-3-0
+        buffers.push(intermediate_data); //3-3-0
 
         let label_data = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -260,6 +260,16 @@ impl Pipeline for BackwardPass {
         );
         buffers.push(label_data); //4-4-0
 
+        let prediction_buffer = device.create_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("Prediction buffer"),
+                size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                mapped_at_creation: false,
+            }
+        );
+        buffers.push(prediction_buffer); //5-0-1
+
         let output_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("Output buffer"),
@@ -268,7 +278,7 @@ impl Pipeline for BackwardPass {
                 mapped_at_creation: false,
             }
         );
-        buffers.push(output_buffer); //5-0-1
+        buffers.push(output_buffer); //6-1-1
 
 
         //Create buffer bind group for pipeline
@@ -378,6 +388,18 @@ impl Pipeline for BackwardPass {
                         min_binding_size: wgpu::BufferSize::new(0),
                     },
                     count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStage::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage {
+                            read_only: false,
+                        },
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(0),
+                    },
+                    count: None,
                 },],
             }
         );
@@ -388,6 +410,10 @@ impl Pipeline for BackwardPass {
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: buffers[5].as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers[6].as_entire_binding(),
                 },],
             }
         );

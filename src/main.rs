@@ -126,7 +126,7 @@ fn run(generate_new_weights: bool) {
     
     //Load data
     let training_data = data::load_data("train").unwrap();
-    const BATCH_SIZE: usize = 1;
+    const BATCH_SIZE: usize = 2;
     let batch_data: Vec<data::MnistImage> = training_data.into_iter().choose_multiple(&mut rng, BATCH_SIZE);
     let batch_labels: Vec<u8> = batch_data.iter().map(|x| x.classification).collect();
     let batch_images: Vec<Vec<f32>> = batch_data.into_iter().map(|x| x.image).collect(); 
@@ -149,7 +149,17 @@ fn run(generate_new_weights: bool) {
 
     //Compute forward pass result
     let forward_pipeline = pipeline_manager.new_pipeline::<pipelines::ForwardPass, f32>(BATCH_SIZE);
-    let forwardprop_result = block_on(pipeline_manager.run_forward_pass::<f32>(forward_pipeline, &network_weights, &input_vector)).unwrap();
+    let leaky_relu: fn(f32) -> f32 = |x| {
+        let mut ret = 0.0;
+        if (x > 0.0) {
+            ret = x;
+        }
+        else {
+            ret = 0.1*x;
+        }
+        ret
+    };
+    let forwardprop_result = block_on(pipeline_manager.run_forward_pass::<f32>(forward_pipeline, &network_weights, &input_vector, leaky_relu)).unwrap();
     let predicted_labels: Vec<&[f32]> = forwardprop_result.chunks(OUTPUT_DIM).collect();
     println!("Predicted labels:");
     println!("{:?}", predicted_labels);
@@ -194,7 +204,7 @@ impl PipelineManager{
         P::new::<T>(&self.device, self.network_shape.0, self.network_shape.1, batch_size)
     }
 
-    async fn run_forward_pass<T: bytemuck::Pod>(&self, pipeline: pipelines::ForwardPass, network_weights: &[T], input_vector: &[T]) -> Option<Vec<T>> {
+    async fn run_forward_pass<T: bytemuck::Pod>(&self, pipeline: pipelines::ForwardPass, network_weights: &[T], input_vector: &[T], activation_function: fn(T) -> T) -> Option<Vec<T>> {
         use pipelines::*;
         let type_size = std::mem::size_of::<T>();
 
@@ -283,7 +293,8 @@ impl PipelineManager{
             Ok(()) => {
                 //Get buffer contents
                 let data = buffer_slice.get_mapped_range();
-                let result: Vec<T> = data.chunks_exact(type_size).map(|b| *bytemuck::from_bytes::<T>(b)).collect();
+                //Convert to T and apply activation function
+                let result: Vec<T> = data.chunks_exact(type_size).map(|b| *bytemuck::from_bytes::<T>(b)).map(activation_function).collect();
                 
                 //Drop mapped view
                 drop(data);
@@ -399,8 +410,8 @@ impl PipelineManager{
         let bind_groups = backward_pipeline.get_bind_groups();
         backward_compute_pass.set_bind_group(0, &bind_groups[0], &[]);
         backward_compute_pass.set_bind_group(1, &bind_groups[1], &[]);
-        //Work groups of X = 1, Y = 1, Z = 1
-        backward_compute_pass.dispatch(1, 1, 1);
+        //Work groups of X = output_size, Y = input_size, Z = 1
+        backward_compute_pass.dispatch(self.network_shape.1 as u32, self.network_shape.0 as u32, 1);
 
         //Encoder borrow is gone now!
         drop(backward_compute_pass);
@@ -415,7 +426,7 @@ impl PipelineManager{
             }
         );
         encoder.copy_buffer_to_buffer(
-            &backward_buffers[5], 0,
+            &backward_buffers[6], 0,
             &staging_buffer, 0,
             (type_size * self.network_shape.0 * self.network_shape.1) as wgpu::BufferAddress,
         );

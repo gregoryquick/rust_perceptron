@@ -17,20 +17,16 @@ layout(set = 0, binding = 3) buffer Target {
     float[] target;
 };
 
-float dotProduct(uint x_index ,uint y_index) {
+float dotProduct(uint index_column, uint index_batch) {
     float accumulator = 0;
-    for(uint k = 0; k < input_size; k++){
-        accumulator += network_weights[k * output_size + x_index] * input_vector[y_index * input_size + k];
+    for(uint contracted_index = 0; contracted_index < input_size; contracted_index++){
+        accumulator += network_weights[contracted_index * output_size + index_column] * input_vector[index_batch * input_size + contracted_index];
     }
     return accumulator;
 }
 
-float Lrelu(float x) {
-    return (x > 0.0) ? x : 0.1 * x;
-}
-
 void main() {
-    uint index_x = gl_GlobalInvocationID.x;
-    uint index_y = gl_GlobalInvocationID.y;
-    target[index_y * output_size +  index_x] = Lrelu(dotProduct(index_x, index_y));
+    uint collumn_index = gl_GlobalInvocationID.x;
+    uint batch_index = gl_GlobalInvocationID.y;
+    target[batch_index * output_size +  collumn_index] = dotProduct(collumn_index, batch_index);
 }
