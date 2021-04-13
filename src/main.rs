@@ -114,7 +114,7 @@ fn run(generate_new_weights: bool) {
             let file = File::create("weights/network.bin").unwrap();
             bincode::serialize_into(&file, &Weights::<WEIGHT_SIZE>{arr: vector}).unwrap();
         } else {
-            let file = File::open("weights/network.bin").unwrap();
+            let file = File::open("weights/new_network.bin").unwrap();
             let weight_data: Weights::<WEIGHT_SIZE> = bincode::deserialize_from(&file).unwrap();
             for (loc, data) in vector.iter_mut().zip(weight_data.arr.iter()) {
                 *loc = *data;
@@ -126,7 +126,7 @@ fn run(generate_new_weights: bool) {
     
     //Load data
     let training_data = data::load_data("train").unwrap();
-    const BATCH_SIZE: usize = 2;
+    const BATCH_SIZE: usize = 16;
     let batch_data: Vec<data::MnistImage> = training_data.into_iter().choose_multiple(&mut rng, BATCH_SIZE);
     let batch_labels: Vec<u8> = batch_data.iter().map(|x| x.classification).collect();
     let batch_images: Vec<Vec<f32>> = batch_data.into_iter().map(|x| x.image).collect(); 
@@ -141,12 +141,32 @@ fn run(generate_new_weights: bool) {
     };
 
     //Compute backward pass
-    let backward_pipeline = pipeline_manager.new_pipeline::<pipelines::BackwardPass, f32>(BATCH_SIZE);
-    let difference_pipeline = pipeline_manager.new_pipeline::<pipelines::DifferenceCalculation, f32>(BATCH_SIZE);
-    let forward_pipeline = pipeline_manager.new_pipeline::<pipelines::ForwardPass, f32>(BATCH_SIZE);
-    let backprop_result = block_on(pipeline_manager.run_backward_pass::<f32>(forward_pipeline, difference_pipeline, backward_pipeline, &network_weights, &input_vector)).unwrap();
+    for i in 0..100 {
+        let backward_pipeline = pipeline_manager.new_pipeline::<pipelines::BackwardPass, f32>(BATCH_SIZE);
+        let difference_pipeline = pipeline_manager.new_pipeline::<pipelines::DifferenceCalculation, f32>(BATCH_SIZE);
+        let forward_pipeline = pipeline_manager.new_pipeline::<pipelines::ForwardPass, f32>(BATCH_SIZE);
+        let network_weights = block_on(pipeline_manager.run_backward_pass::<f32>(forward_pipeline, difference_pipeline, backward_pipeline, &network_weights, &input_vector)).unwrap();
+
+        let training_data = data::load_data("train").unwrap();
+        let batch_data: Vec<data::MnistImage> = training_data.into_iter().choose_multiple(&mut rng, BATCH_SIZE);
+        let batch_labels: Vec<u8> = batch_data.iter().map(|x| x.classification).collect();
+        let batch_images: Vec<Vec<f32>> = batch_data.into_iter().map(|x| x.image).collect(); 
+
+        let input_vector = {
+            const DATA_SIZE: usize = DATA_DIM * BATCH_SIZE;
+            let mut vector: [f32; DATA_SIZE] = [0f32; DATA_SIZE];
+            for (loc, data) in vector.iter_mut().zip(batch_images.into_iter().flatten()) {
+                *loc = data;
+            }
+            vector
+        };
+
+    }
+    let file = File::create("weights/new_network.bin").unwrap();
+    bincode::serialize_into(&file, &Weights::<WEIGHT_SIZE>{arr: network_weights}).unwrap();
+
     println!("New weights:");
-    println!("{:?}", backprop_result);
+    println!("{:?}", network_weights);
 
     //Compute forward pass result
     let forward_pipeline = pipeline_manager.new_pipeline::<pipelines::ForwardPass, f32>(BATCH_SIZE);
@@ -430,7 +450,6 @@ impl PipelineManager{
             &backward_buffers[4], 0,
             (type_size * self.network_shape.1 * batch_size) as wgpu::BufferAddress,
         );
-
 
         //Create the compute pass for the backward pass (Mutably borrows encoder)
         let mut backward_compute_pass = encoder.begin_compute_pass(

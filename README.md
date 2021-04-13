@@ -10,5 +10,5 @@ Version |             Features            |        Status      |
 ------- | ------------------------------- | ------------------ |
 0.1     | Implementation of forward pass  | :white_check_mark: |
 0.2     | Implementation of backward pass | :construction:     |
-0.3     | Multilayer forward pass         |                    |
-0.4     | Multilayer backward pass        |                    |      
+0.?     | Multilayer forward pass         |                    |
+0.?     | Multilayer backward pass        |                    |      
