@@ -1,0 +1,38 @@
+#version 450
+layout(set = 0, binding = 0) uniform UniformBuffer {
+    uint input_size;
+    uint output_size;
+    uint batch_size;
+};
+
+layout(set = 0, binding = 1) buffer NetworkWeights {
+    float[] network_weights;
+};
+
+layout(set = 0, binding = 2) buffer InputData {
+    float[] input_data;
+};
+
+layout(set = 0, binding = 3) buffer Target {
+    float[] target;
+};
+
+float dot_product(uint index_column, uint index_row) {
+    float accumulator = 0;
+    //network_weights: input_size x output_size
+    //input_data: input_size x batch_size
+    for(uint contraction_index = 0; contraction_index < input_size; contraction_index++){
+        accumulator += network_weights[index_row * input_size + contraction_index] * input_data[index_column * input_size + contraction_index];
+    }
+    return accumulator;
+}
+
+void main() {
+    //Target is m x n
+    uint collumn_index = gl_GlobalInvocationID.x;
+    //Max collumn_index is batch_size (- 1)
+    uint row_index = gl_GlobalInvocationID.y;
+    //Max row_index is output_size (- 1)
+    target[collumn_index * output_size + row_index] = dot_product(collumn_index, row_index);
+    //Target is output_size x batch_size
+}

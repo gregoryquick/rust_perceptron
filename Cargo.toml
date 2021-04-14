@@ -1,6 +1,6 @@
 [package]
 name = "rust_perceptron"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["gregoryquick <gregory@quicks.me>"]
 edition = "2018"
 
