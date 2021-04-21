@@ -39,7 +39,7 @@ impl PipelineAnchor {
     }
 }
 
-pub async fn run_forward_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, network_weights: &[T], input_data: &[T], batch_size: usize) -> Option<Vec<T>>{
+pub async fn run_forward_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, network_weights: &Vec<T>, input_data: &Vec<T>, batch_size: usize) -> Option<Vec<T>>{
     let type_size = std::mem::size_of::<T>();
     let device = &anchor.device;
 
@@ -58,7 +58,7 @@ pub async fn run_forward_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, network
     let weight_data_buffer = device.create_buffer_init(
         &BufferInitDescriptor {
             label: None,
-            contents: bytemuck::cast_slice(network_weights),
+            contents: bytemuck::cast_slice(&network_weights[..]),
             usage: wgpu::BufferUsage::COPY_SRC,
         }
     );
@@ -71,7 +71,7 @@ pub async fn run_forward_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, network
     let input_data_buffer = device.create_buffer_init(
         &BufferInitDescriptor {
             label: None,
-            contents: bytemuck::cast_slice(input_data),
+            contents: bytemuck::cast_slice(&input_data[..]),
             usage: wgpu::BufferUsage::COPY_SRC,
         }
     );

@@ -16,6 +16,12 @@ impl LabeledData<f32,u8> for Data {
     fn get_label(&self) -> &u8 {
         &self.classification
     }
+
+    fn from_label(&self) -> Vec<f32> {
+        let mut vec: Vec<f32> = vec![0f32; 10];
+        vec[self.classification as usize] = 1.0;
+        vec
+    }
 }
 
 pub(super) fn load_data(dataset_name: &str) -> Result<Vec<Data>, std::io::Error> {
@@ -40,6 +46,7 @@ pub(super) fn load_data(dataset_name: &str) -> Result<Vec<Data>, std::io::Error>
         ret.push(Data {
             image,
             classification,
+
         })
     }
      Ok(ret)

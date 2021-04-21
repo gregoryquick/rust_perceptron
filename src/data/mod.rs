@@ -19,12 +19,12 @@ impl DataSet<mnist::Data> {
         return batch_data;
     }
 
-    pub fn get_data<'a>(batch: &Vec<&'a mnist::Data>) -> Vec<&'a Vec<f32>> {
-        let batch_data: Vec<&Vec<f32>> = batch.iter().map(|item| item.get_data()).collect();
+    pub fn get_data<'a>(batch: &Vec<&'a mnist::Data>) -> Vec<&'a f32> {
+        let batch_data: Vec<&f32> = batch.iter().map(|item| item.get_data().iter()).flatten().collect();
         batch_data
     }
-    pub fn get_labels<'a>(batch: &Vec<&'a mnist::Data>) -> Vec<&'a u8> {
-        let batch_labels: Vec<&u8> = batch.iter().map(|item| item.get_label()).collect();
+    pub fn get_labels<'a>(batch: &Vec<&'a mnist::Data>) -> Vec<f32> {
+        let batch_labels: Vec<f32> = batch.iter().map(|item| item.from_label()).flatten().collect();
         batch_labels
     }
 }
@@ -33,5 +33,7 @@ pub trait LabeledData<Data: bytemuck::Pod, Label: bytemuck::Pod> {
     fn get_data(&self) -> &Vec<Data>;
 
     fn get_label(&self) -> &Label;
+
+    fn from_label(&self) -> Vec<Data>;
 }
 

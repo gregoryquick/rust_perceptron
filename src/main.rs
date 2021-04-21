@@ -13,7 +13,7 @@ fn main() {
     const INPUT_DIM: usize = 28 * 28;
     const OUTPUT_DIM: usize = 10;
     let pipeline_anchor = block_on(pipelines::PipelineAnchor::new(INPUT_DIM, OUTPUT_DIM));
-    const BATCH_SIZE: usize = 1;
+    const BATCH_SIZE: usize = 2;
     //let matrix_pipeline = pipelines::matrixdot::Pipeline::new::<f32>(&pipeline_anchor, (None, None, None), batch_size);
     //let activation_pipeline = pipelines::leakyrelu::Pipeline::new::<f32>(&pipeline_anchor, (Some(matrix_pipeline.output_buffer), None), batch_size);
 
@@ -24,24 +24,21 @@ fn main() {
     println!("{:?}", labels);
 
     //Actual computation bellow
-    //Format input data
+    //Input data
     let batch_images = data::DataSet::<data::mnist::Data>::get_data(&batch);
     let input_data = {
-        const DATA_SIZE: usize = INPUT_DIM * BATCH_SIZE;
-        let mut vector: [f32; DATA_SIZE] = [0f32; DATA_SIZE];
-        for (loc, data) in vector.iter_mut().zip(batch_images.into_iter().flatten()) {
+        let mut vector: Vec<f32> = vec![0f32; INPUT_DIM * BATCH_SIZE];
+        for (loc, data) in vector.iter_mut().zip(batch_images.into_iter()) {
             *loc = *data;
         }
         vector
-    };
-
+    };    
     //Weights
-    const WEIGHT_SIZE: usize = INPUT_DIM * OUTPUT_DIM;
     let mut rng = rand::thread_rng();
     use rand::distributions::Uniform;
     let dist = Uniform::new(-1.0,1.0);
     let network_weights = {
-        let mut vector: [f32; WEIGHT_SIZE] = [0f32; WEIGHT_SIZE];
+        let mut vector: Vec<f32> = vec![0f32; INPUT_DIM * OUTPUT_DIM];
         for num in vector.iter_mut() {
                 *num = rng.sample(dist);
         }
