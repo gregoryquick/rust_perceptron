@@ -37,13 +37,22 @@ fn main() {
     let mut rng = rand::thread_rng();
     use rand::distributions::Uniform;
     let dist = Uniform::new(-1.0,1.0);
+    const GENERATE_NETWORK: bool = false;
     let network_weights = {
         let mut vector: Vec<f32> = vec![0f32; INPUT_DIM * OUTPUT_DIM];
-        for num in vector.iter_mut() {
-                *num = rng.sample(dist);
+        if GENERATE_NETWORK {
+            for num in vector.iter_mut() {
+                    *num = rng.sample(dist);
+            }
+            let file = File::create("weights/network.bin").unwrap();
+            bincode::serialize_into(&file, &vector).unwrap();
+            println!("Generated network weights!");
         }
-        //let file = File::create("weights/network.bin").unwrap();
-        //bincode::serialize_into(&file, &Weights::<WEIGHT_SIZE>{arr: vector}).unwrap();
+        else {
+            let file = File::open("weights/network.bin").unwrap();
+            let weight_data: Vec<f32> = bincode::deserialize_from(&file).unwrap();
+            vector = weight_data;
+        }
         vector
     };
     
