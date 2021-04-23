@@ -1,0 +1,26 @@
+#version 450
+layout(set = 0, binding = 0) uniform UniformBuffer {
+    uint input_size;
+    uint batch_size;
+};
+
+layout(set = 0, binding = 1) buffer InputA {
+    float[] a;
+};
+
+layout(set = 0, binding = 2) buffer InputB {
+    float[] b;
+};
+
+layout(set = 0, binding = 3) buffer Target {
+    float[] target;
+};
+
+void main() {
+    uint collumn_index = gl_GlobalInvocationID.x;
+    //Max collumn_index is batch_size (- 1)
+    uint row_index = gl_GlobalInvocationID.y;
+    //Max row_index is input_size (- 1)
+    target[collumn_index * input_size + row_index] = a[collumn_index * input_size + row_index] - b[collumn_index * input_size + row_index] 
+    //Target is input_size x batch_size
+}

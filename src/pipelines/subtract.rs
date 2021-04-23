@@ -1,6 +1,7 @@
 pub struct Pipeline {
     pub uniform_buffer: wgpu::Buffer,
-    pub input_buffer: wgpu::Buffer,
+    pub input_buffer_a: wgpu::Buffer,
+    pub input_buffer_b: wgpu::Buffer,
     pub output_buffer: wgpu::Buffer,
     pub bind_group_0: wgpu::BindGroup,
     pub compute_pipeline: wgpu::ComputePipeline,
@@ -8,6 +9,7 @@ pub struct Pipeline {
 impl Pipeline {
     pub fn new<T: bytemuck::Pod>(anchor: &super::PipelineAnchor,
                                  buffers: (Option<wgpu::Buffer>,
+                                           Option<wgpu::Buffer>,
                                            Option<wgpu::Buffer>)
                                  , batch_size: usize,) -> Self {
         let type_size = std::mem::size_of::<T>();
@@ -25,10 +27,10 @@ impl Pipeline {
         );
         //0-0
 
-        let input_buffer = buffers.0.unwrap_or(
+        let input_buffer_a = buffers.0.unwrap_or(
             device.create_buffer(
                 &wgpu::BufferDescriptor {
-                    label: Some("Input Buffer"),
+                    label: Some("Input Buffer A"),
                     size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
                     usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
                     mapped_at_creation: false,
@@ -37,7 +39,19 @@ impl Pipeline {
         );
         //0-1
         
-        let output_buffer = buffers.1.unwrap_or(
+        let input_buffer_b = buffers.1.unwrap_or(
+            device.create_buffer(
+                &wgpu::BufferDescriptor {
+                    label: Some("Input Buffer B"),
+                    size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
+                    usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
+                    mapped_at_creation: false,
+                }
+            )
+        );
+        //0-2
+
+        let output_buffer = buffers.2.unwrap_or(
             device.create_buffer(
                 &wgpu::BufferDescriptor {
                     label: Some("Output buffer"),
@@ -47,7 +61,7 @@ impl Pipeline {
                 }
             )
         );
-        //0-2
+        //0-3
         
         //Create bind group(s)
         let bind_group_layout_0 = device.create_bind_group_layout(
@@ -80,6 +94,18 @@ impl Pipeline {
                     visibility: wgpu::ShaderStage::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage {
+                            read_only: true,
+                        },
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(0),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStage::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage {
                             read_only: false,
                         },
                         has_dynamic_offset: false,
@@ -99,10 +125,15 @@ impl Pipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: input_buffer.as_entire_binding(),
+                    resource: input_buffer_a.as_entire_binding(),
                 },
-                wgpu::BindGroupEntry {
+                                wgpu::BindGroupEntry {
                     binding: 2,
+                    resource: input_buffer_b.as_entire_binding(),
+                },
+
+                wgpu::BindGroupEntry {
+                    binding: 3,
                     resource: output_buffer.as_entire_binding(),
                 },],
             }
@@ -141,7 +172,8 @@ impl Pipeline {
         //Return
         Pipeline {
             uniform_buffer,
-            input_buffer,
+            input_buffer_a,
+            input_buffer_b,
             output_buffer,
             bind_group_0,
             compute_pipeline,

@@ -56,10 +56,22 @@ fn main() {
         vector
     };
     
-    //Compute
+    //Compute predictions
     let prediction = block_on(pipelines::run_forward_pass::<f32>(&pipeline_anchor, &network_weights, &input_data, BATCH_SIZE)).unwrap();
     println!("Predictions:");
     println!("{:?}", prediction);
+
+    //Compute error
+    let label_data = {
+        let mut vector: Vec<f32> = vec![0f32; OUTPUT_DIM * BATCH_SIZE];
+        for (loc, data) in vector.iter_mut().zip(labels.into_iter()) {
+            *loc = data;
+        }
+        vector
+    };   
+    let error = block_on(pipelines::run_error_pass::<f32>(&pipeline_anchor, &network_weights, &input_data, &label_data, BATCH_SIZE)).unwrap();
+    println!("Errors:");
+    println!("{:?}", error);
 
     
 }

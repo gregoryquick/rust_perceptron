@@ -1,6 +1,6 @@
 #version 450
 layout(set = 0, binding = 0) uniform UniformBuffer {
-    uint input_size;
+    uint output_size;
     uint batch_size;
 };
 
@@ -13,7 +13,7 @@ layout(set = 0, binding = 2) buffer Target {
 };
 
 float leaky_relu(uint index_column, uint index_row) {
-    float value = input_data[index_column * input_size + index_row];
+    float value = input_data[index_column * output_size + index_row];
     return value < 0.0 ? 0.1 * value : value;
 }
 
@@ -22,7 +22,7 @@ void main() {
     uint collumn_index = gl_GlobalInvocationID.x;
     //Max collumn_index is batch_size (- 1)
     uint row_index = gl_GlobalInvocationID.y;
-    //Max row_index is input_size (- 1)
-    target[collumn_index * input_size + row_index] = leaky_relu(collumn_index, row_index);
+    //Max row_index is output_size (- 1)
+    target[collumn_index * output_size + row_index] = leaky_relu(collumn_index, row_index);
     //Target is input_size x batch_size
 }
