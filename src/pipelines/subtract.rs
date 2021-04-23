@@ -140,9 +140,9 @@ impl Pipeline {
         );
 
         //Create compute pipeline
-        let cs_src = include_str!("shaders/leakyrelu.comp");
+        let cs_src = include_str!("shaders/subtract.comp");
         let mut compiler = shaderc::Compiler::new().unwrap();
-        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "leakyrelu.comp", "main", None).unwrap();
+        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "subtract.comp", "main", None).unwrap();
         let cs_module = device.create_shader_module(
             &wgpu::ShaderModuleDescriptor {
                 label: None,
