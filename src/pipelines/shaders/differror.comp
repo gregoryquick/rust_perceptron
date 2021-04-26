@@ -4,12 +4,12 @@ layout(set = 0, binding = 0) uniform UniformBuffer {
     uint batch_size;
 };
 
-layout(set = 0, binding = 1) buffer InputA {
-    float[] a;
+layout(set = 0, binding = 1) buffer PredictedValue {
+    float[] prediction;
 };
 
-layout(set = 0, binding = 2) buffer InputB {
-    float[] b;
+layout(set = 0, binding = 2) buffer ActualValue {
+    float[] actual;
 };
 
 layout(set = 0, binding = 3) buffer Target {
@@ -21,6 +21,6 @@ void main() {
     //Max collumn_index is batch_size (- 1)
     uint row_index = gl_GlobalInvocationID.y;
     //Max row_index is output_size (- 1)
-    target[collumn_index * output_size + row_index] = a[collumn_index * output_size + row_index] - b[collumn_index * output_size + row_index]; 
-    //Target is input_size x batch_size
+    target[collumn_index * output_size + row_index] = prediction[collumn_index * output_size + row_index] - actual[collumn_index * output_size + row_index]; 
+    //Target is output_size x batch_size
 }

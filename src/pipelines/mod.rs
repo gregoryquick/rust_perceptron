@@ -1,6 +1,6 @@
-mod matrixdot;
+mod applyweights;
 mod leakyrelu;
-mod subtract;
+mod differror;
 
 pub struct PipelineAnchor {
     adapter: wgpu::Adapter,
@@ -52,7 +52,7 @@ pub async fn run_forward_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, network
     );
 
     //Create first pipeline
-    let matrix_pipeline = matrixdot::Pipeline::new::<T>(anchor, (None, None, None), batch_size);
+    let matrix_pipeline = applyweights::Pipeline::new::<T>(anchor, (None, None, None), batch_size);
 
     //Load data into pipeline
     use wgpu::util::{BufferInitDescriptor, DeviceExt};
@@ -153,7 +153,7 @@ pub async fn run_error_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, network_w
     );
 
     //Create first pipeline
-    let matrix_pipeline = matrixdot::Pipeline::new::<T>(anchor, (None, None, None), batch_size);
+    let matrix_pipeline = applyweights::Pipeline::new::<T>(anchor, (None, None, None), batch_size);
 
     //Load data into pipeline
     use wgpu::util::{BufferInitDescriptor, DeviceExt};
@@ -195,7 +195,7 @@ pub async fn run_error_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, network_w
     activation_pipeline.run(anchor, &mut encoder, batch_size);
 
     //Create error pipeline
-    let error_pipeline = subtract::Pipeline::new::<T>(anchor, (None, Some(activation_pipeline.output_buffer), None), batch_size);
+    let error_pipeline = differror::Pipeline::new::<T>(anchor, (Some(activation_pipeline.output_buffer), None, None), batch_size);
     
     //Copy actual labels to gpu
     let label_data_buffer = device.create_buffer_init(
@@ -207,7 +207,7 @@ pub async fn run_error_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, network_w
     );
     encoder.copy_buffer_to_buffer(
         &label_data_buffer, 0,
-        &error_pipeline.input_buffer_a, 0,
+        &error_pipeline.input_buffer_b, 0,
         (type_size * anchor.output_size * batch_size) as wgpu::BufferAddress,
     );
 
