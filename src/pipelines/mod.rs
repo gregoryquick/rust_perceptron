@@ -1,9 +1,12 @@
 mod applyweights;
 mod leakyrelu;
+mod leakyreluprime;
 mod differror;
+mod backprop;
+
 
 pub struct PipelineAnchor {
-    adapter: wgpu::Adapter,
+    _adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
     input_size: usize,
@@ -31,7 +34,7 @@ impl PipelineAnchor {
         
         //Return
         PipelineAnchor {
-            adapter,
+            _adapter: adapter,
             device,
             queue,
             input_size,
@@ -141,7 +144,7 @@ pub async fn run_forward_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, network
 }
 
 
-pub async fn run_error_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, network_weights: &Vec<T>, input_data: &Vec<T>, label_data: &Vec<T>, batch_size: usize) -> Option<Vec<T>> {
+pub async fn run_backward_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, network_weights: &Vec<T>, input_data: &Vec<T>, label_data: &Vec<T>, batch_size: usize) -> Option<Vec<T>> {
     let type_size = std::mem::size_of::<T>();
     let device = &anchor.device;
 
@@ -211,22 +214,43 @@ pub async fn run_error_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, network_w
         (type_size * anchor.output_size * batch_size) as wgpu::BufferAddress,
     );
 
-    //Run individual error calculation
+    //Run individual error calculations
     error_pipeline.run(anchor, &mut encoder, batch_size);
 
+    //Create prediction sensitivity pipeline
+    let sensitivity_pipeline = leakyreluprime::Pipeline::new::<T>(anchor, (Some(activation_pipeline.input_buffer), None), batch_size);
+
+    //No data loading needed
+    
+    //Run pipeline
+    sensitivity_pipeline.run(anchor, &mut encoder, batch_size);
+
+    //Create backpropagation pipeline
+    let backprop_pipeline = backprop::Pipeline::new::<T>(anchor, (
+        Some(error_pipeline.output_buffer),
+        Some(sensitivity_pipeline.output_buffer),
+        Some(matrix_pipeline.input_buffer),
+        None,
+    ), batch_size);
+
+    //No data loading needed
+    
+    //Run pipeline
+    backprop_pipeline.run(anchor, &mut encoder, batch_size);
+    
     //Copy data out of gpu
     let staging_buffer = device.create_buffer(
         &wgpu::BufferDescriptor {
             label: Some("Staging buffer"),
-            size: (type_size * anchor.output_size * batch_size) as wgpu::BufferAddress,
+            size: (type_size * anchor.input_size * anchor.output_size) as wgpu::BufferAddress,
             usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
             mapped_at_creation: false,
         }
     );
     encoder.copy_buffer_to_buffer(
-        &error_pipeline.output_buffer, 0,
+        &backprop_pipeline.output_buffer, 0,
         &staging_buffer, 0,
-        (type_size * anchor.output_size * batch_size) as wgpu::BufferAddress,
+        (type_size * anchor.input_size * anchor.output_size) as wgpu::BufferAddress,
     );
 
     let queue = &anchor.queue;

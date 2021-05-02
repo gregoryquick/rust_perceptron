@@ -17,22 +17,22 @@ layout(set = 0, binding = 3) buffer Target {
     float[] target;
 };
 
-float dot_product(uint index_column, uint index_row) {
+float dot_product(uint index_of_output_vector, uint index_in_output_vector) {
     float accumulator = 0;
-    //network_weights: input_size x output_size
-    //input_data: input_size x batch_size
-    for(uint contraction_index = 0; contraction_index < input_size; contraction_index++){
-        accumulator += network_weights[index_row * input_size + contraction_index] * input_data[index_column * input_size + contraction_index];
+    //network_weights: ^input_size, _output_size
+    //input_data: _input_size, _batch_size
+    //Contracting along input_size
+    for(uint contraction_index = 0; contraction_index < input_size; contraction_index++) {
+        accumulator += network_weights[index_in_output_vector * input_size + contraction_index] * input_data[index_of_output_vector * input_size + contraction_index];
     }
     return accumulator;
 }
 
 void main() {
-    //Target is m x n
-    uint collumn_index = gl_GlobalInvocationID.x;
-    //Max collumn_index is batch_size (- 1)
-    uint row_index = gl_GlobalInvocationID.y;
-    //Max row_index is output_size (- 1)
-    target[collumn_index * output_size + row_index] = dot_product(collumn_index, row_index);
-    //Target is output_size x batch_size
+    uint index_of_output_vector = gl_GlobalInvocationID.x;
+    //Number of output vectors is batch_size
+    uint index_in_output_vector = gl_GlobalInvocationID.y;
+    //Size of output vectors is output_size
+    target[index_of_output_vector * output_size + index_in_output_vector] = dot_product(index_of_output_vector, index_in_output_vector);
+    //Target: _output_size, _batch_size
 }

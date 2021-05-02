@@ -6,16 +6,14 @@ extern crate serde;
 use rand::prelude::*;
 
 use futures::executor::block_on;
-use std::thread;
+//use std::thread;
 use std::fs::File;
 
 fn main() {
     const INPUT_DIM: usize = 28 * 28;
     const OUTPUT_DIM: usize = 10;
     let pipeline_anchor = block_on(pipelines::PipelineAnchor::new(INPUT_DIM, OUTPUT_DIM));
-    const BATCH_SIZE: usize = 2;
-    //let matrix_pipeline = pipelines::matrixdot::Pipeline::new::<f32>(&pipeline_anchor, (None, None, None), batch_size);
-    //let activation_pipeline = pipelines::leakyrelu::Pipeline::new::<f32>(&pipeline_anchor, (Some(matrix_pipeline.output_buffer), None), batch_size);
+    const BATCH_SIZE: usize = 3;
 
     let data_set = data::DataSet::<data::mnist::Data>::new("train");
     let batch = data_set.generate_batch(BATCH_SIZE);
@@ -69,9 +67,9 @@ fn main() {
         }
         vector
     };   
-    let error = block_on(pipelines::run_error_pass::<f32>(&pipeline_anchor, &network_weights, &input_data, &label_data, BATCH_SIZE)).unwrap();
-    println!("Errors:");
-    println!("{:?}", error);
+    let gradient = block_on(pipelines::run_backward_pass::<f32>(&pipeline_anchor, &network_weights, &input_data, &label_data, BATCH_SIZE)).unwrap();
+    println!("Weight gradient:");
+    println!("{:?}", gradient);
 
     
 }

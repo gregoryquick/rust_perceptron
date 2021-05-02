@@ -3,8 +3,8 @@ pub struct Pipeline {
     pub input_buffer_a: wgpu::Buffer,
     pub input_buffer_b: wgpu::Buffer,
     pub output_buffer: wgpu::Buffer,
-    pub bind_group_0: wgpu::BindGroup,
-    pub compute_pipeline: wgpu::ComputePipeline,
+    bind_group_0: wgpu::BindGroup,
+    compute_pipeline: wgpu::ComputePipeline,
 }
 impl Pipeline {
     pub fn new<T: bytemuck::Pod>(anchor: &super::PipelineAnchor,

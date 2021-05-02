@@ -16,11 +16,17 @@ layout(set = 0, binding = 3) buffer Target {
     float[] target;
 };
 
+float difference(uint index_of_output_vector, uint index_in_output_vector) {
+    //prediction: _output_size, _batch_size
+    //actual: _output_size, _batch_size
+    return prediction[index_of_output_vector * output_size + index_in_output_vector] - actual[index_of_output_vector * output_size + index_in_output_vector];
+}
+
 void main() {
-    uint collumn_index = gl_GlobalInvocationID.x;
-    //Max collumn_index is batch_size (- 1)
-    uint row_index = gl_GlobalInvocationID.y;
-    //Max row_index is output_size (- 1)
-    target[collumn_index * output_size + row_index] = prediction[collumn_index * output_size + row_index] - actual[collumn_index * output_size + row_index]; 
-    //Target is output_size x batch_size
+    uint index_of_output_vector = gl_GlobalInvocationID.x;
+    //Number of output_vectors is batch_size
+    uint index_in_output_vector = gl_GlobalInvocationID.y;
+    //size of output_vectors is output_size
+    target[index_of_output_vector * output_size + index_in_output_vector] = difference(index_of_output_vector, index_in_output_vector);
+    //Target: _output_size, _batch_size
 }
