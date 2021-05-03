@@ -1,0 +1,46 @@
+#version 450
+layout(set = 0, binding = 0) uniform UniformBuffer {
+    uint input_size;
+    uint output_size;
+    uint batch_size;
+};
+
+layout(set = 0, binding = 1) buffer LossData {
+    float[] loss_data;
+};
+
+layout(set = 0, binding = 2) buffer SensitivityData {
+    float[] sensitivity_data;
+};
+
+
+layout(set = 0, binding = 3) buffer InputData {
+    float[] input_data;
+};
+
+layout(set = 0, binding = 4) buffer Target {
+    float[] target;
+};
+
+float backprop(uint index_of_output_covector, uint index_in_output_covector) {
+    float batch_size_float = float(batch_size);
+    float accumulator = 0.0;
+    //error_data: _output_size, batch_size
+    //sensitivity_data: _output_size, _batch_size
+    //input_data: _input_size, _batch_size
+    for(uint batch_index = 0; batch_index < batch_size; batch_index++) {
+        accumulator += loss_data[batch_index * output_size + index_of_output_covector]
+            * sensitivity_data[batch_index * output_size + index_of_output_covector]
+            * input_data[batch_index * input_size + index_in_output_covector];
+    }
+    return accumulator/batch_size_float;
+}
+
+void main() {
+    uint index_of_output_covector = gl_GlobalInvocationID.x;
+    //Number of output_covectors is output_size
+    uint index_in_output_covector = gl_GlobalInvocationID.y;
+    //Size of output_vectors is input_size
+    target[index_of_output_covector * input_size + index_in_output_covector] = backprop(index_of_output_covector, index_in_output_covector);
+    //Target: ^input_size, _output_size
+}

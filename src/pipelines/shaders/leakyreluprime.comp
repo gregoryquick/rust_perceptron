@@ -1,0 +1,28 @@
+#version 450
+layout(set = 0, binding = 0) uniform UniformBuffer {
+    uint output_size;
+    uint batch_size;
+};
+
+layout(set = 0, binding = 1) buffer InputData {
+    float[] input_data;
+};
+
+layout(set = 0, binding = 2) buffer Target {
+    float[] target;
+};
+
+float leaky_relu_prime(uint index_of_output_vector, uint index_in_output_vector) {
+    //value: _output_size, _batch_size
+    float value = input_data[index_of_output_vector * output_size + index_in_output_vector];
+    return value < 0.0 ?  0.1 : 1.0;
+}
+
+void main() {
+    uint index_of_output_vector = gl_GlobalInvocationID.x;
+    //Number of output_vectors is batch_size
+    uint index_in_output_vector = gl_GlobalInvocationID.y;
+    //size of output_vectors is output_size
+    target[index_of_output_vector * output_size + index_in_output_vector] = leaky_relu_prime(index_of_output_vector, index_in_output_vector);
+    //Target: _output_size, _batch_size
+}

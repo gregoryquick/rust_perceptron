@@ -1,0 +1,34 @@
+#version 450
+layout(set = 0, binding = 0) uniform UniformBuffer {
+    uint input_size;
+    uint output_size;
+    float learning_rate;
+};
+
+layout(set = 0, binding = 1) buffer CurrentValue {
+    float[] current_value;
+};
+
+layout(set = 0, binding = 2) buffer GradientValue {
+    float[] gradient_value;
+};
+
+layout(set = 0, binding = 3) buffer Target {
+    float[] target;
+};
+
+float descend(uint index_of_output_covector, uint index_in_output_covector) {
+    //current_value: ^input_size, _output_size
+    //gradient_value: ^input_size, _output_size
+    float new_value = current_value[index_of_output_covector * input_size + index_in_output_covector] - (learning_rate * gradient_value[index_of_output_covector * input_size + index_in_output_covector]);
+    return new_value;
+}
+
+void main() {
+    uint index_of_output_covector = gl_GlobalInvocationID.x;
+    //Number of output_covectors is output_size
+    uint index_in_output_covector = gl_GlobalInvocationID.y;
+    //Size of output_vectors is input_size
+    target[index_of_output_covector * input_size + index_in_output_covector] = descend(index_of_output_covector, index_in_output_covector);
+    //Target: ^input_size, _output_size
+}

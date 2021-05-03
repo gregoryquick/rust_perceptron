@@ -1,505 +1,189 @@
-#![feature(const_generics)]
 mod pipelines;
 mod data;
 
 extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-mod arrays {
-    use std::{convert::TryInto, marker::PhantomData};
 
-    use serde::{
-        de::{SeqAccess, Visitor},
-        ser::SerializeTuple,
-        Deserialize, Deserializer, Serialize, Serializer,
-    };
-    pub fn serialize<S: Serializer, T: Serialize, const N: usize>(
-        data: &[T; N],
-        ser: S,
-    ) -> Result<S::Ok, S::Error> {
-        let mut s = ser.serialize_tuple(N)?;
-        for item in data {
-            s.serialize_element(item)?;
-        }
-        s.end()
-    }
-
-    struct ArrayVisitor<T, const N: usize>(PhantomData<T>);
-
-    impl<'de, T, const N: usize> Visitor<'de> for ArrayVisitor<T, N>
-    where
-        T: Deserialize<'de>,
-    {
-        type Value = [T; N];
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            formatter.write_str(&format!("an array of length {}", N))
-        }
-
-        #[inline]
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-        where
-            A: SeqAccess<'de>,
-        {
-            // can be optimized using MaybeUninit
-            let mut data = Vec::with_capacity(N);
-            for _ in 0..N {
-                match (seq.next_element())? {
-                    Some(val) => data.push(val),
-                    None => return Err(serde::de::Error::invalid_length(N, &self)),
-                }
-            }
-            match data.try_into() {
-                Ok(arr) => Ok(arr),
-                Err(_) => unreachable!(),
-            }
-        }
-    }
-    pub fn deserialize<'de, D, T, const N: usize>(deserializer: D) -> Result<[T; N], D::Error>
-    where
-        D: Deserializer<'de>,
-        T: Deserialize<'de>,
-    {
-        deserializer.deserialize_tuple(N, ArrayVisitor::<T, N>(PhantomData))
-    }
-}
-
-use rand::prelude::*;
+//use rand::prelude::*;
 
 use futures::executor::block_on;
-use std::thread;
+//use std::thread;
 use std::fs::File;
 
-
 fn main() {
-    //Default stack size is 8 * 1024 * 1024
-    const STACK_SIZE: usize = 8 * 1024 * 1024;    
-    //Spawn thread with explicit stack size
-    let child = thread::Builder::new()
-        .stack_size(STACK_SIZE)
-        .spawn(|| {run(false)})
-        .unwrap();
-
-    // Wait for thread to join
-    child.join().unwrap();
+    gradient_descent::<f32>("weights/network.bin", 24, 0.1f32, 12);
 }
 
-fn run(generate_new_weights: bool) {
-    //Network parameters
-    const DATA_DIM: usize = 28 * 28;
-    const OUTPUT_DIM: usize = 10;
+fn gradient_descent<T: bytemuck::Pod + serde::Serialize>(weight_read_location: &str, number_of_runs: usize, learning_rate: T, batch_size: usize) {
+    let input_dim: usize = 28 * 28;
+    let output_dim: usize = 10;
+    let validation_batch_size: usize = 2 * batch_size;
 
-    //~ ~ C O D E ~ ~
-    use rand::distributions::Uniform;
-    let pipeline_manager = block_on(PipelineManager::new(DATA_DIM, OUTPUT_DIM));
-    let mut rng = rand::thread_rng();
+    let pipeline_anchor = block_on(pipelines::PipelineAnchor::new(input_dim, output_dim));
+    let data_set = data::DataSet::<data::mnist::Data>::new("train");
+    let validation_set = data::DataSet::<data::mnist::Data>::new("t10k");
 
-    
-    //Get network weights
-    const WEIGHT_SIZE: usize = DATA_DIM * OUTPUT_DIM;
-    let dist = Uniform::new(-1.0,1.0);
-    #[derive(Serialize, Deserialize, Debug)]
-    struct Weights<const N: usize> {
-        #[serde(with = "arrays")]
-        arr: [f32; N],
-    }
+    let type_size = std::mem::size_of::<T>();
+    let device = &pipeline_anchor.device;
+
+    //Load weights
+    use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
     let network_weights = {
-        let mut vector: [f32; WEIGHT_SIZE] = [0f32; WEIGHT_SIZE];
-        
-        if generate_new_weights {
-            for num in vector.iter_mut() {
-                    *num = rng.sample(dist);
-            }
-            let file = File::create("weights/network.bin").unwrap();
-            bincode::serialize_into(&file, &Weights::<WEIGHT_SIZE>{arr: vector}).unwrap();
-        } else {
-            let file = File::open("weights/new_network.bin").unwrap();
-            let weight_data: Weights::<WEIGHT_SIZE> = bincode::deserialize_from(&file).unwrap();
-            for (loc, data) in vector.iter_mut().zip(weight_data.arr.iter()) {
-                *loc = *data;
-            }
-        }
-        
-        vector
-    };
-    
-    //Load data
-    let training_data = data::load_data("train").unwrap();
-    const BATCH_SIZE: usize = 16;
-    let batch_data: Vec<data::MnistImage> = training_data.into_iter().choose_multiple(&mut rng, BATCH_SIZE);
-    let batch_labels: Vec<u8> = batch_data.iter().map(|x| x.classification).collect();
-    let batch_images: Vec<Vec<f32>> = batch_data.into_iter().map(|x| x.image).collect(); 
-
-    let input_vector = {
-        const DATA_SIZE: usize = DATA_DIM * BATCH_SIZE;
-        let mut vector: [f32; DATA_SIZE] = [0f32; DATA_SIZE];
-        for (loc, data) in vector.iter_mut().zip(batch_images.into_iter().flatten()) {
-            *loc = data;
-        }
-        vector
+        let file = File::open(weight_read_location).unwrap();
+        let weight_data: Vec<f32> = bincode::deserialize_from(&file).unwrap();
+        weight_data
     };
 
-    //Compute backward pass
-    for i in 0..100 {
-        let backward_pipeline = pipeline_manager.new_pipeline::<pipelines::BackwardPass, f32>(BATCH_SIZE);
-        let difference_pipeline = pipeline_manager.new_pipeline::<pipelines::DifferenceCalculation, f32>(BATCH_SIZE);
-        let forward_pipeline = pipeline_manager.new_pipeline::<pipelines::ForwardPass, f32>(BATCH_SIZE);
-        let network_weights = block_on(pipeline_manager.run_backward_pass::<f32>(forward_pipeline, difference_pipeline, backward_pipeline, &network_weights, &input_vector)).unwrap();
-
-        let training_data = data::load_data("train").unwrap();
-        let batch_data: Vec<data::MnistImage> = training_data.into_iter().choose_multiple(&mut rng, BATCH_SIZE);
-        let batch_labels: Vec<u8> = batch_data.iter().map(|x| x.classification).collect();
-        let batch_images: Vec<Vec<f32>> = batch_data.into_iter().map(|x| x.image).collect(); 
-
-        let input_vector = {
-            const DATA_SIZE: usize = DATA_DIM * BATCH_SIZE;
-            let mut vector: [f32; DATA_SIZE] = [0f32; DATA_SIZE];
-            for (loc, data) in vector.iter_mut().zip(batch_images.into_iter().flatten()) {
-                *loc = data;
-            }
-            vector
-        };
-
-    }
-    let file = File::create("weights/new_network.bin").unwrap();
-    bincode::serialize_into(&file, &Weights::<WEIGHT_SIZE>{arr: network_weights}).unwrap();
-
-    println!("New weights:");
-    println!("{:?}", network_weights);
-
-    //Compute forward pass result
-    let forward_pipeline = pipeline_manager.new_pipeline::<pipelines::ForwardPass, f32>(BATCH_SIZE);
-    let leaky_relu: fn(f32) -> f32 = |x| {
-        let mut ret = 0.0;
-        if (x > 0.0) {
-            ret = x;
+    let mut weight_data_buffer: wgpu::Buffer = device.create_buffer_init(
+        &BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&network_weights[..]),
+            usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
         }
-        else {
-            ret = 0.1*x;
+    );
+
+    //Create staging buffer for loading out of gpu
+    let staging_buffer = device.create_buffer(
+        &wgpu::BufferDescriptor {
+            label: Some("Staging buffer"),
+            size: (type_size * &pipeline_anchor.input_size * &pipeline_anchor.output_size) as wgpu::BufferAddress,
+            usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
+            mapped_at_creation: false,
         }
-        ret
-    };
-    let forwardprop_result = block_on(pipeline_manager.run_forward_pass::<f32>(forward_pipeline, &network_weights, &input_vector, leaky_relu)).unwrap();
-    let predicted_labels: Vec<&[f32]> = forwardprop_result.chunks(OUTPUT_DIM).collect();
-    println!("Predicted labels:");
-    println!("{:?}", predicted_labels);
-}
+    );
 
-#[allow(dead_code)]
-struct PipelineManager {
-    adapter: wgpu::Adapter,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    network_shape: (usize, usize),
-}
-
-impl PipelineManager{
-    async fn new(input_size: usize, output_size: usize,) -> Self{
-        //Get device
-        let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
-        let adapter = instance.request_adapter(
-            &wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-            },
-        ).await.unwrap();
-        let (device, queue) = adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                features: wgpu::Features::empty(),
-                limits: wgpu::Limits::default(),
-            },
-            None,
-        ).await.unwrap();
-        
-        PipelineManager{
-            adapter: adapter,
-            device: device,
-            queue: queue,
-            network_shape: (input_size, output_size),
-        }
-    }
-
-    fn new_pipeline<P: pipelines::Pipeline, T: bytemuck::Pod>(&self, batch_size: usize,) -> P {
-        P::new::<T>(&self.device, self.network_shape.0, self.network_shape.1, batch_size)
-    }
-
-    async fn run_forward_pass<T: bytemuck::Pod>(&self, pipeline: pipelines::ForwardPass, network_weights: &[T], input_vector: &[T], activation_function: fn(T) -> T) -> Option<Vec<T>> {
-        use pipelines::*;
-        let type_size = std::mem::size_of::<T>();
-
+    //Per batch operations
+    for batch_index in 0..number_of_runs {
+        let batch = data_set.generate_batch(batch_size);
+        let batch_labels = data::DataSet::<data::mnist::Data>::get_labels(&batch);
+        let batch_images = data::DataSet::<data::mnist::Data>::get_data(&batch);
         //Create command encoder
-        let mut encoder = self.device.create_command_encoder(
+        let mut encoder = device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor {
                 label: None 
             }
         );
 
-        //Load data into gpu
-        use wgpu::util::{BufferInitDescriptor, DeviceExt};
-        let buffers = pipeline.get_buffers();
-        let batch_size: usize = pipeline.get_batch_size();
-
-        let weight_data_buffer = self.device.create_buffer_init(
+        //Load data for pipelines
+        let input_data = {
+            let mut vector: Vec<f32> = vec![0f32; &pipeline_anchor.input_size * batch_size];
+            for (loc, data) in vector.iter_mut().zip(batch_images.into_iter()) {
+                *loc = *data;
+            }
+            vector
+        };
+        let input_data_buffer = device.create_buffer_init(
             &BufferInitDescriptor {
                 label: None,
-                contents: bytemuck::cast_slice(network_weights),
-                usage: wgpu::BufferUsage::COPY_SRC,
+                contents: bytemuck::cast_slice(&input_data[..]),
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
             }
         );
-        encoder.copy_buffer_to_buffer(
-            &weight_data_buffer, 0,
-            &buffers[1], 0,
-            (type_size * self.network_shape.0 * self.network_shape.1) as wgpu::BufferAddress,
-        );
-        
-        let input_data_buffer = self.device.create_buffer_init(
+
+        let label_data_buffer = device.create_buffer_init(
             &BufferInitDescriptor {
                 label: None,
-                contents: bytemuck::cast_slice(input_vector),
-                usage: wgpu::BufferUsage::COPY_SRC,
+                contents: bytemuck::cast_slice(&batch_labels[..]),
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
             }
-        );
-        encoder.copy_buffer_to_buffer(
-            &input_data_buffer, 0,
-            &buffers[2], 0,
-            (type_size * self.network_shape.0 * batch_size) as wgpu::BufferAddress,
         );
 
-        //Create the compute pass (Mutably borrows encoder)
-        let mut compute_pass = encoder.begin_compute_pass(
-            &wgpu::ComputePassDescriptor { 
-                label: None 
-            }
-        );
         
-        //Add compute pipeline to compute pass
-        compute_pass.set_pipeline(pipeline.get_compute_pipeline());
-        let bind_groups = pipeline.get_bind_groups();
-        compute_pass.set_bind_group(0, &bind_groups[0], &[]);
-        //Work groups of X = output_size, Y = batch_size, Z = 1
-        compute_pass.dispatch(self.network_shape.1 as u32, batch_size as u32, 1);
+        //Create weight application pipeline
+        let weight_pipeline = pipelines::applyweights::Pipeline::new::<T>(&pipeline_anchor, (
+            Some(weight_data_buffer),
+            Some(input_data_buffer),
+            None,
+        ), batch_size);
+
+        //Run weight pipeline
+        weight_pipeline.run(&pipeline_anchor, &mut encoder, batch_size);
+
+        //Create activation pipeline
+        let activation_pipeline = pipelines::leakyrelu::Pipeline::new::<T>(&pipeline_anchor, (
+            Some(weight_pipeline.output_buffer),
+            None,
+        ), batch_size);
+
+        //Run activation pipeline
+        activation_pipeline.run(&pipeline_anchor, &mut encoder, batch_size);
+
+        //Create loss calculation pipeline
+        let loss_pipeline = pipelines::loss::Pipeline::new::<T>(&pipeline_anchor, (
+            Some(activation_pipeline.output_buffer),
+            Some(label_data_buffer),
+            None,
+        ), batch_size);
+
+        //Run loss pipeline
+        loss_pipeline.run(&pipeline_anchor, &mut encoder, batch_size);
+
+        //Create prediction sensitivity pipeline
+        let sensitivity_pipeline = pipelines::leakyreluprime::Pipeline::new::<T>(&pipeline_anchor, (
+            Some(activation_pipeline.input_buffer),
+            None
+        ), batch_size);
+
+        //Run sensitivity pipeline
+        sensitivity_pipeline.run(&pipeline_anchor, &mut encoder, batch_size);
         
-        //Encoder borrow is gone now!
-        drop(compute_pass);
+        //Create error backpropagation pipeline
+        let backprop_pipeline = pipelines::backprop::Pipeline::new::<T>(&pipeline_anchor, (
+            Some(loss_pipeline.output_buffer),
+            Some(sensitivity_pipeline.output_buffer),
+            Some(weight_pipeline.input_buffer),
+            None,
+        ), batch_size);
 
-        //Copy output from gpu buffer to staging buffer on cpu
-        let staging_buffer = self.device.create_buffer(
-            &wgpu::BufferDescriptor {
-                label: Some("Staging buffer"),
-                size: (type_size * self.network_shape.1 * batch_size) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
-                mapped_at_creation: false,
-            }
-        );
-        encoder.copy_buffer_to_buffer(
-            &buffers[3], 0,
-            &staging_buffer, 0,
-            (type_size * self.network_shape.1 * batch_size) as wgpu::BufferAddress,
-        );
+        //Run backprop pipeline
+        backprop_pipeline.run(&pipeline_anchor, &mut encoder, batch_size);
 
-        //Finish building command encoder and submit
-        self.queue.submit(Some(encoder.finish()));
+        //Create gradient descent pipeline
+        let descendgrad_pipeline = pipelines::descendgrad::Pipeline::new::<T>(&pipeline_anchor, (
+            Some(weight_pipeline.weight_buffer),
+            Some(backprop_pipeline.output_buffer),
+            None,
+        ), learning_rate, batch_size);
 
-        //Create future of the computation
-        let buffer_slice = staging_buffer.slice(..);
-        let buffer_future = buffer_slice.map_async(wgpu::MapMode::Read);
+        //Run gradient descent step
+        descendgrad_pipeline.run(&pipeline_anchor, &mut encoder, batch_size);
 
-        //Wait for computation to complete
-        self.device.poll(wgpu::Maintain::Wait);
+        //Write out of gpu if on last iteration
+        if (batch_index + 1) == number_of_runs {
+            encoder.copy_buffer_to_buffer(
+                &descendgrad_pipeline.output_buffer, 0,
+                &staging_buffer, 0,
+                (type_size * &pipeline_anchor.input_size * &pipeline_anchor.output_size) as wgpu::BufferAddress,
+            );
+        }
 
-        //Handle computation result and return
+        //Submit commands to gpu que
+        let queue = &pipeline_anchor.queue;
+        queue.submit(Some(encoder.finish()));
+
+        //Set up buffers for next iteration
+        weight_data_buffer = descendgrad_pipeline.input_buffer_a;
+        if false {
+            println!("{}", batch_index);
+        }
+        else {
+            weight_data_buffer = get_error_and_return_weights(&pipeline_anchor, &validation_set, weight_data_buffer, validation_batch_size);
+        }
+    }
+
+    //Create future of the computation
+    let buffer_slice = staging_buffer.slice(..);
+    let buffer_future = buffer_slice.map_async(wgpu::MapMode::Read);
+    
+    //Wait for computation to complete
+    device.poll(wgpu::Maintain::Wait);
+
+    block_on(async {
         match buffer_future.await {
             Ok(()) => {
                 //Get buffer contents
                 let data = buffer_slice.get_mapped_range();
                 //Convert to T and apply activation function
-                let result: Vec<T> = data.chunks_exact(type_size).map(|b| *bytemuck::from_bytes::<T>(b)).map(activation_function).collect();
-                
-                //Drop mapped view
-                drop(data);
-                //Unmap buffer
-                staging_buffer.unmap();
-
-                Some(result)
-            }
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                None
-            }
-        }
-    }
-
-    async fn run_backward_pass<T: bytemuck::Pod>(&self, forward_pipeline: pipelines::ForwardPass, difference_pipeline: pipelines::DifferenceCalculation, backward_pipeline: pipelines::BackwardPass, network_weights: &[T], input_data: &[T]) -> Option<Vec<T>> {
-        use pipelines::*;
-        let type_size = std::mem::size_of::<T>();
-
-        //Pannic if pipelines have mismatched batch size
-        let batch_size: usize = forward_pipeline.get_batch_size();
-        assert!(batch_size == backward_pipeline.get_batch_size());
-
-
-        //Create command encoder
-        let mut encoder = self.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor {
-                label: None 
-            }
-        );
-
-        //Load data into forwad pass gpu
-        use wgpu::util::{BufferInitDescriptor, DeviceExt};
-        let forward_buffers = forward_pipeline.get_buffers();
-
-        let weight_data_buffer = self.device.create_buffer_init(
-            &BufferInitDescriptor {
-                label: None,
-                contents: bytemuck::cast_slice(network_weights),
-                usage: wgpu::BufferUsage::COPY_SRC,
-            }
-        );
-        encoder.copy_buffer_to_buffer(
-            &weight_data_buffer, 0,
-            &forward_buffers[1], 0,
-            (type_size * self.network_shape.0 * self.network_shape.1) as wgpu::BufferAddress,
-        );
-        
-        let input_data_buffer = self.device.create_buffer_init(
-            &BufferInitDescriptor {
-                label: None,
-                contents: bytemuck::cast_slice(input_data),
-                usage: wgpu::BufferUsage::COPY_SRC,
-            }
-        );
-        encoder.copy_buffer_to_buffer(
-            &input_data_buffer, 0,
-            &forward_buffers[2], 0,
-            (type_size * self.network_shape.0 * batch_size) as wgpu::BufferAddress,
-        );
-
-        
-        //Create the compute pass for the forward pass (Mutably borrows encoder)
-        let mut forward_compute_pass = encoder.begin_compute_pass(
-            &wgpu::ComputePassDescriptor { 
-                label: None 
-            }
-        );
-
-        //Add forward pass compute pipeline to compute pass
-        forward_compute_pass.set_pipeline(forward_pipeline.get_compute_pipeline());
-        let bind_groups = forward_pipeline.get_bind_groups();
-        forward_compute_pass.set_bind_group(0, &bind_groups[0], &[]);
-        //Work groups of X = output_size, Y = batch_size, Z = 1
-        forward_compute_pass.dispatch(self.network_shape.1 as u32, batch_size as u32, 1);
-        
-        //Encoder borrow is gone now!
-        drop(forward_compute_pass);
-
-        //Copy intermediate data to difference compute pass
-        let error_buffers = difference_pipeline.get_buffers();
-
-        encoder.copy_buffer_to_buffer(
-            &forward_buffers[3], 0,
-            &error_buffers[1], 0,
-            (type_size * self.network_shape.1 * batch_size) as wgpu::BufferAddress,
-        );
-        //TODO copy vectorized label data to compute pass
-
-        
-        //Create the compute pass for the error pass (Mutably borrows encoder)
-        let mut difference_compute_pass = encoder.begin_compute_pass(
-            &wgpu::ComputePassDescriptor { 
-                label: None 
-            }
-        );
-
-        difference_compute_pass.set_pipeline(difference_pipeline.get_compute_pipeline());
-        let bind_groups = difference_pipeline.get_bind_groups();
-        difference_compute_pass.set_bind_group(0, &bind_groups[0], &[]);
-        //Work groups of X = output_size, Y = batch_size, Z = 1
-        difference_compute_pass.dispatch(self.network_shape.1 as u32, batch_size as u32, 1);
-
-        //Encoder borrow is gone now!
-        drop(difference_compute_pass);
-
-        //Load data shared into backward pass 
-        let backward_buffers = backward_pipeline.get_buffers();
-
-        encoder.copy_buffer_to_buffer(
-            &weight_data_buffer, 0,
-            &backward_buffers[1], 0,
-            (type_size * self.network_shape.0 * self.network_shape.1) as wgpu::BufferAddress,
-        );
-        
-        encoder.copy_buffer_to_buffer(
-            &input_data_buffer, 0,
-            &backward_buffers[2], 0,
-            (type_size * self.network_shape.0 * batch_size) as wgpu::BufferAddress,
-        );
-        
-        //Copy forward pass data to backward pass
-        encoder.copy_buffer_to_buffer(
-            &forward_buffers[3], 0,
-            &backward_buffers[3], 0,
-            (type_size * self.network_shape.1 * batch_size) as wgpu::BufferAddress,
-        );
-
-        //Copy error data to backard pass
-        encoder.copy_buffer_to_buffer(
-            &error_buffers[3], 0,
-            &backward_buffers[4], 0,
-            (type_size * self.network_shape.1 * batch_size) as wgpu::BufferAddress,
-        );
-
-        //Create the compute pass for the backward pass (Mutably borrows encoder)
-        let mut backward_compute_pass = encoder.begin_compute_pass(
-            &wgpu::ComputePassDescriptor { 
-                label: None 
-            }
-        );
-
-        //Add compute pipeline to compute pass
-        backward_compute_pass.set_pipeline(backward_pipeline.get_compute_pipeline());
-        let bind_groups = backward_pipeline.get_bind_groups();
-        backward_compute_pass.set_bind_group(0, &bind_groups[0], &[]);
-        backward_compute_pass.set_bind_group(1, &bind_groups[1], &[]);
-        //Work groups of X = output_size, Y = input_size, Z = 1
-        backward_compute_pass.dispatch(self.network_shape.1 as u32, self.network_shape.0 as u32, 1);
-
-        //Encoder borrow is gone now!
-        drop(backward_compute_pass);
-
-        //Copy output from gpu buffer to staging buffer on cpu
-        let staging_buffer = self.device.create_buffer(
-            &wgpu::BufferDescriptor {
-                label: Some("Staging buffer"),
-                size: (type_size * self.network_shape.0 * self.network_shape.1) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
-                mapped_at_creation: false,
-            }
-        );
-        encoder.copy_buffer_to_buffer(
-            &backward_buffers[5], 0,
-            &staging_buffer, 0,
-            (type_size * self.network_shape.0 * self.network_shape.1) as wgpu::BufferAddress,
-        );
-        
-        //Finish building command encoder and submit
-        self.queue.submit(Some(encoder.finish()));
-
-        //Create future of the computation
-        let buffer_slice = staging_buffer.slice(..);
-        let buffer_future = buffer_slice.map_async(wgpu::MapMode::Read);
-
-        //Wait for computation to complete
-        self.device.poll(wgpu::Maintain::Wait);
-
-
-        //Handle computation result and return
-        match buffer_future.await {
-            Ok(()) => {
-                //Get buffer contents
-                let data = buffer_slice.get_mapped_range();
                 let result: Vec<T> = data.chunks_exact(type_size).map(|b| *bytemuck::from_bytes::<T>(b)).collect();
                 
                 //Drop mapped view
@@ -507,13 +191,38 @@ impl PipelineManager{
                 //Unmap buffer
                 staging_buffer.unmap();
 
-                Some(result)
+                let file = File::create(weight_read_location).unwrap();
+                bincode::serialize_into(&file, &result).unwrap();
             }
             Err(e) => {
                 eprintln!("Error: {}", e);
-                None
             }
-        }
-    }
-
+        } 
+    });
 }
+
+pub fn get_error_and_return_weights(
+    anchor: &pipelines::PipelineAnchor,
+    data_set: &data::DataSet<data::mnist::Data>,
+    network_weights: wgpu::Buffer,
+    validation_batch_size: usize,
+    ) -> wgpu::Buffer {
+    let batch = data_set.generate_batch(validation_batch_size);
+    let batch_labels = data::DataSet::<data::mnist::Data>::get_labels(&batch);
+    let batch_images = data::DataSet::<data::mnist::Data>::get_data(&batch);
+
+    let input_data = {
+        let mut vector: Vec<f32> = vec![0f32; anchor.input_size * validation_batch_size];
+        for (loc, data) in vector.iter_mut().zip(batch_images.into_iter()) {
+            *loc = *data;
+        }
+        vector
+    };
+
+    let (error, weights) = block_on(pipelines::run_batch_error::<f32>(anchor,network_weights, &input_data, &batch_labels, validation_batch_size)).unwrap();
+
+    println!("{}", error);
+
+    weights
+}
+
