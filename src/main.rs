@@ -3,7 +3,7 @@ mod data;
 
 extern crate serde;
 
-use rand::prelude::*;
+//use rand::prelude::*;
 
 use futures::executor::block_on;
 //use std::thread;
@@ -13,12 +13,14 @@ fn main() {
     gradient_descent::<f32>("weights/network.bin", 24, 0.1f32, 12);
 }
 
-pub fn gradient_descent<T: bytemuck::Pod>(weight_read_location: &str, number_of_runs: usize, learning_rate: T, batch_size: usize) {
-    const INPUT_DIM: usize = 28 * 28;
-    const OUTPUT_DIM: usize = 10;
+fn gradient_descent<T: bytemuck::Pod + serde::Serialize>(weight_read_location: &str, number_of_runs: usize, learning_rate: T, batch_size: usize) {
+    let input_dim: usize = 28 * 28;
+    let output_dim: usize = 10;
+    let validation_batch_size: usize = 2 * batch_size;
 
-    let pipeline_anchor = block_on(pipelines::PipelineAnchor::new(INPUT_DIM, OUTPUT_DIM));
+    let pipeline_anchor = block_on(pipelines::PipelineAnchor::new(input_dim, output_dim));
     let data_set = data::DataSet::<data::mnist::Data>::new("train");
+    let validation_set = data::DataSet::<data::mnist::Data>::new("t10k");
 
     let type_size = std::mem::size_of::<T>();
     let device = &pipeline_anchor.device;
@@ -27,7 +29,7 @@ pub fn gradient_descent<T: bytemuck::Pod>(weight_read_location: &str, number_of_
     use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
     let network_weights = {
-        let file = File::open("weights/network.bin").unwrap();
+        let file = File::open(weight_read_location).unwrap();
         let weight_data: Vec<f32> = bincode::deserialize_from(&file).unwrap();
         weight_data
     };
@@ -64,7 +66,7 @@ pub fn gradient_descent<T: bytemuck::Pod>(weight_read_location: &str, number_of_
 
         //Load data for pipelines
         let input_data = {
-            let mut vector: Vec<f32> = vec![0f32; INPUT_DIM * batch_size];
+            let mut vector: Vec<f32> = vec![0f32; &pipeline_anchor.input_size * batch_size];
             for (loc, data) in vector.iter_mut().zip(batch_images.into_iter()) {
                 *loc = *data;
             }
@@ -161,7 +163,66 @@ pub fn gradient_descent<T: bytemuck::Pod>(weight_read_location: &str, number_of_
 
         //Set up buffers for next iteration
         weight_data_buffer = descendgrad_pipeline.input_buffer_a;
-        println!("{}", batch_index);
+        if false {
+            println!("{}", batch_index);
+        }
+        else {
+            weight_data_buffer = get_error_and_return_weights(&pipeline_anchor, &validation_set, weight_data_buffer, validation_batch_size);
+        }
     }
+
+    //Create future of the computation
+    let buffer_slice = staging_buffer.slice(..);
+    let buffer_future = buffer_slice.map_async(wgpu::MapMode::Read);
+    
+    //Wait for computation to complete
+    device.poll(wgpu::Maintain::Wait);
+
+    block_on(async {
+        match buffer_future.await {
+            Ok(()) => {
+                //Get buffer contents
+                let data = buffer_slice.get_mapped_range();
+                //Convert to T and apply activation function
+                let result: Vec<T> = data.chunks_exact(type_size).map(|b| *bytemuck::from_bytes::<T>(b)).collect();
+                
+                //Drop mapped view
+                drop(data);
+                //Unmap buffer
+                staging_buffer.unmap();
+
+                let file = File::create(weight_read_location).unwrap();
+                bincode::serialize_into(&file, &result).unwrap();
+            }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+            }
+        } 
+    });
+}
+
+pub fn get_error_and_return_weights(
+    anchor: &pipelines::PipelineAnchor,
+    data_set: &data::DataSet<data::mnist::Data>,
+    network_weights: wgpu::Buffer,
+    validation_batch_size: usize,
+    ) -> wgpu::Buffer {
+    let batch = data_set.generate_batch(validation_batch_size);
+    let batch_labels = data::DataSet::<data::mnist::Data>::get_labels(&batch);
+    let batch_images = data::DataSet::<data::mnist::Data>::get_data(&batch);
+
+    let input_data = {
+        let mut vector: Vec<f32> = vec![0f32; anchor.input_size * validation_batch_size];
+        for (loc, data) in vector.iter_mut().zip(batch_images.into_iter()) {
+            *loc = *data;
+        }
+        vector
+    };
+
+    let (error, weights) = block_on(pipelines::run_batch_error::<f32>(anchor,network_weights, &input_data, &batch_labels, validation_batch_size)).unwrap();
+
+    println!("{}", error);
+
+    weights
 }
 
