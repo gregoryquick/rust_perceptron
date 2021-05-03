@@ -1,16 +1,18 @@
-mod applyweights;
-mod leakyrelu;
-mod leakyreluprime;
-mod differror;
-mod backprop;
+pub mod applyweights;
+pub mod leakyrelu;
+pub mod leakyreluprime;
+pub mod loss;
+pub mod backprop;
+pub mod descendgrad;
+
 
 
 pub struct PipelineAnchor {
-    _adapter: wgpu::Adapter,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    input_size: usize,
-    output_size: usize,
+    pub _adapter: wgpu::Adapter,
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+    pub input_size: usize,
+    pub output_size: usize,
 }
 
 impl PipelineAnchor {
@@ -197,8 +199,8 @@ pub async fn run_backward_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, networ
     //Run pipeline
     activation_pipeline.run(anchor, &mut encoder, batch_size);
 
-    //Create error pipeline
-    let error_pipeline = differror::Pipeline::new::<T>(anchor, (Some(activation_pipeline.output_buffer), None, None), batch_size);
+    //Create loss pipeline
+    let loss_pipeline = loss::Pipeline::new::<T>(anchor, (Some(activation_pipeline.output_buffer), None, None), batch_size);
     
     //Copy actual labels to gpu
     let label_data_buffer = device.create_buffer_init(
@@ -210,12 +212,12 @@ pub async fn run_backward_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, networ
     );
     encoder.copy_buffer_to_buffer(
         &label_data_buffer, 0,
-        &error_pipeline.input_buffer_b, 0,
+        &loss_pipeline.input_buffer_b, 0,
         (type_size * anchor.output_size * batch_size) as wgpu::BufferAddress,
     );
 
     //Run individual error calculations
-    error_pipeline.run(anchor, &mut encoder, batch_size);
+    loss_pipeline.run(anchor, &mut encoder, batch_size);
 
     //Create prediction sensitivity pipeline
     let sensitivity_pipeline = leakyreluprime::Pipeline::new::<T>(anchor, (Some(activation_pipeline.input_buffer), None), batch_size);
@@ -227,7 +229,7 @@ pub async fn run_backward_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, networ
 
     //Create backpropagation pipeline
     let backprop_pipeline = backprop::Pipeline::new::<T>(anchor, (
-        Some(error_pipeline.output_buffer),
+        Some(loss_pipeline.output_buffer),
         Some(sensitivity_pipeline.output_buffer),
         Some(matrix_pipeline.input_buffer),
         None,
@@ -284,4 +286,3 @@ pub async fn run_backward_pass<T: bytemuck::Pod>(anchor: &PipelineAnchor, networ
         }
     }
 }
-

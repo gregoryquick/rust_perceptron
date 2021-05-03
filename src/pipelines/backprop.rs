@@ -1,6 +1,6 @@
 pub struct Pipeline {
     pub uniform_buffer: wgpu::Buffer,
-    pub error_buffer: wgpu::Buffer,
+    pub loss_buffer: wgpu::Buffer,
     pub sensitivity_buffer: wgpu::Buffer,
     pub input_buffer: wgpu::Buffer,
     pub output_buffer: wgpu::Buffer,
@@ -31,10 +31,10 @@ impl Pipeline {
         );
         //0-0
 
-        let error_buffer = buffers.0.unwrap_or(
+        let loss_buffer = buffers.0.unwrap_or(
             device.create_buffer(
                 &wgpu::BufferDescriptor {
-                    label: Some("Prediction Difference"),
+                    label: Some("Prediction loss"),
                     size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
                     usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
                     mapped_at_creation: false,
@@ -153,7 +153,7 @@ impl Pipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: error_buffer.as_entire_binding(),
+                    resource: loss_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
@@ -203,7 +203,7 @@ impl Pipeline {
         //Return
         Pipeline {
             uniform_buffer,
-            error_buffer,
+            loss_buffer,
             sensitivity_buffer,
             input_buffer,
             output_buffer,

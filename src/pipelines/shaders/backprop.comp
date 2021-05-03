@@ -5,8 +5,8 @@ layout(set = 0, binding = 0) uniform UniformBuffer {
     uint batch_size;
 };
 
-layout(set = 0, binding = 1) buffer ErrorData {
-    float[] error_data;
+layout(set = 0, binding = 1) buffer LossData {
+    float[] loss_data;
 };
 
 layout(set = 0, binding = 2) buffer SensitivityData {
@@ -29,7 +29,7 @@ float backprop(uint index_of_output_covector, uint index_in_output_covector) {
     //sensitivity_data: _output_size, _batch_size
     //input_data: _input_size, _batch_size
     for(uint batch_index = 0; batch_index < batch_size; batch_index++) {
-        accumulator += error_data[batch_index * output_size + index_of_output_covector]
+        accumulator += loss_data[batch_index * output_size + index_of_output_covector]
             * sensitivity_data[batch_index * output_size + index_of_output_covector]
             * input_data[batch_index * input_size + index_in_output_covector];
     }
