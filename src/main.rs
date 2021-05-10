@@ -10,8 +10,137 @@ use futures::executor::block_on;
 use std::fs::File;
 
 fn main() {
-    gradient_descent::<f32>("weights/network.bin", 24, 0.1f32, 12);
+    //gradient_descent::<f32>("weights/network.bin", 120, 0.005f32, 128);
+    let (result, label) = random_forward::<f32>("weights/network.bin").unwrap();
+    println!("Label:");
+    println!("{:?}", label);
+    println!("Prediction:");
+    println!("{:?}", result);
 }
+
+fn random_forward<T: bytemuck::Pod>(weight_read_location: &str) -> Option<(Vec<T>, Vec<f32>)> {
+    let input_dim: usize = 28 * 28;
+    let output_dim: usize = 10;
+    let batch_size: usize = 1;
+
+    let pipeline_anchor = block_on(pipelines::PipelineAnchor::new(input_dim, output_dim));
+    let data_set = data::DataSet::<data::mnist::Data>::new("t10k");
+
+    let type_size = std::mem::size_of::<T>();
+    let device = &pipeline_anchor.device;
+
+    let batch = data_set.generate_batch(batch_size);
+    let batch_labels = data::DataSet::<data::mnist::Data>::get_labels(&batch);
+    let batch_images = data::DataSet::<data::mnist::Data>::get_data(&batch);
+
+    //Load data to gpu
+    use wgpu::util::{BufferInitDescriptor, DeviceExt};
+    let network_weights = {
+        let file = File::open(weight_read_location).unwrap();
+        let weight_data: Vec<f32> = bincode::deserialize_from(&file).unwrap();
+        weight_data
+    };
+    let weight_data_buffer: wgpu::Buffer = device.create_buffer_init(
+        &BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&network_weights[..]),
+            usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+        }
+    );
+
+    let input_data = {
+        let mut vector: Vec<f32> = vec![0f32; &pipeline_anchor.input_size * batch_size];
+        for (loc, data) in vector.iter_mut().zip(batch_images.into_iter()) {
+            *loc = *data;
+        }
+        vector
+    };
+    let input_data_buffer = device.create_buffer_init(
+        &BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&input_data[..]),
+            usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+        }
+    );
+
+    //Create staging buffer for loading out of gpu
+    let staging_buffer = device.create_buffer(
+        &wgpu::BufferDescriptor {
+            label: Some("Staging buffer"),
+            size: (type_size * &pipeline_anchor.output_size * batch_size) as wgpu::BufferAddress,
+            usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
+            mapped_at_creation: false,
+        }
+    );
+
+    //Create command encoder
+    let mut encoder = device.create_command_encoder(
+        &wgpu::CommandEncoderDescriptor {
+            label: None 
+        }
+    );
+
+    //Create weight application pipeline
+    let weight_pipeline = pipelines::applyweights::Pipeline::new::<T>(&pipeline_anchor, (
+        Some(weight_data_buffer),
+        Some(input_data_buffer),
+        None,
+    ), batch_size);
+
+    //Run weight pipeline
+    weight_pipeline.run(&pipeline_anchor, &mut encoder, batch_size);
+
+    
+    //Create activation pipeline
+    let activation_pipeline = pipelines::leakyrelu::Pipeline::new::<T>(&pipeline_anchor, (
+        Some(weight_pipeline.output_buffer),
+        None,
+    ), batch_size);
+
+    //Run activation pipeline
+    activation_pipeline.run(&pipeline_anchor, &mut encoder, batch_size);
+
+    //Copy data out of gpu
+    encoder.copy_buffer_to_buffer(
+        &activation_pipeline.output_buffer, 0,
+        &staging_buffer, 0,
+        (type_size * &pipeline_anchor.output_size * batch_size) as wgpu::BufferAddress,
+    );
+
+    let queue = &pipeline_anchor.queue;
+
+    queue.submit(Some(encoder.finish()));
+
+    //Create future of the computation
+    let buffer_slice = staging_buffer.slice(..);
+    let buffer_future = buffer_slice.map_async(wgpu::MapMode::Read);
+
+    //Wait for computation to complete
+    device.poll(wgpu::Maintain::Wait);
+
+    block_on(async {
+        match buffer_future.await {
+            Ok(()) => {
+                //Get buffer contents
+                let data = buffer_slice.get_mapped_range();
+                //Convert to T and apply activation function
+                let result: Vec<T> = data.chunks_exact(type_size).map(|b| *bytemuck::from_bytes::<T>(b)).collect();
+                
+                //Drop mapped view
+                drop(data);
+                //Unmap buffer
+                staging_buffer.unmap();
+
+                return Some( (result, batch_labels) )
+            }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                None
+            }
+        } 
+    })
+}
+
 
 fn gradient_descent<T: bytemuck::Pod + serde::Serialize>(weight_read_location: &str, number_of_runs: usize, learning_rate: T, batch_size: usize) {
     let input_dim: usize = 28 * 28;
@@ -46,7 +175,7 @@ fn gradient_descent<T: bytemuck::Pod + serde::Serialize>(weight_read_location: &
     let staging_buffer = device.create_buffer(
         &wgpu::BufferDescriptor {
             label: Some("Staging buffer"),
-            size: (type_size * &pipeline_anchor.input_size * &pipeline_anchor.output_size) as wgpu::BufferAddress,
+            size: (type_size * &pipeline_anchor.output_size * &pipeline_anchor.input_size) as wgpu::BufferAddress,
             usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
             mapped_at_creation: false,
         }
@@ -153,7 +282,7 @@ fn gradient_descent<T: bytemuck::Pod + serde::Serialize>(weight_read_location: &
             encoder.copy_buffer_to_buffer(
                 &descendgrad_pipeline.output_buffer, 0,
                 &staging_buffer, 0,
-                (type_size * &pipeline_anchor.input_size * &pipeline_anchor.output_size) as wgpu::BufferAddress,
+                (type_size * &pipeline_anchor.output_size * &pipeline_anchor.input_size) as wgpu::BufferAddress,
             );
         }
 
