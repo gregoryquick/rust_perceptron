@@ -1,4 +1,6 @@
+pub mod addvectortobatch;
 pub mod matrixmultiply;
+
 
 pub struct Device {
     pub _adapter: wgpu::Adapter,

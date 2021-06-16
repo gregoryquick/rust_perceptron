@@ -1,29 +1,28 @@
 pub struct Pipeline {
     pub uniform_buffer: wgpu::Buffer,
-    pub matrix_a_buffer: wgpu::Buffer,
-    pub matrix_b_buffer: wgpu::Buffer,
+    pub matrix_buffer: wgpu::Buffer,
+    pub vector_buffer: wgpu::Buffer,
     pub output_buffer: wgpu::Buffer,
     bind_group_0: wgpu::BindGroup,
     compute_pipeline: wgpu::ComputePipeline,
 }
 
 impl Pipeline {
-    // Contract a m x n matrix with a n x k matrix to make a m x k matrix
+    //Take an n-length vector and add it across m to an m x n matrix
     pub fn new<T: bytemuck::Pod>(anchor: &super::Device,
                                  buffers: (Option<wgpu::Buffer>, // uniform buffer
                                            Option<wgpu::Buffer>, // m x n matrix
-                                           Option<wgpu::Buffer>, // n x k matrix
+                                           Option<wgpu::Buffer>, // n-length vector
                                            Option<wgpu::Buffer>),// output
                                  m_size: usize,
-                                 n_size: usize,
-                                 k_size: usize,) -> Self {
+                                 n_size: usize,) -> Self {
         let type_size = std::mem::size_of::<T>();
         let device = &anchor.device;
         //Create/load buffers
         use wgpu::util::{BufferInitDescriptor, DeviceExt};
         
         let uniform_buffer = buffers.0.unwrap_or({
-            let uniform_data = [m_size as u32, n_size as u32, k_size as u32];
+            let uniform_data = [m_size as u32, n_size as u32,];
             device.create_buffer_init(
                 &BufferInitDescriptor {
                     label: Some("Uniform Buffer"),
@@ -34,10 +33,10 @@ impl Pipeline {
         });
         //0-0
 
-        let matrix_a_buffer = buffers.1.unwrap_or(
+        let matrix_buffer = buffers.1.unwrap_or(
             device.create_buffer(
                 &wgpu::BufferDescriptor {
-                    label: Some("Matrix A"),
+                    label: Some("Batch Buffer"),
                     size: (type_size * m_size * n_size) as wgpu::BufferAddress,
                     usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
                     mapped_at_creation: false,
@@ -46,11 +45,11 @@ impl Pipeline {
         );
         //0-1
 
-        let matrix_b_buffer = buffers.2.unwrap_or(
+        let vector_buffer = buffers.2.unwrap_or(
             device.create_buffer(
                 &wgpu::BufferDescriptor {
-                    label: Some("Matrix B"),
-                    size: (type_size * n_size * k_size) as wgpu::BufferAddress,
+                    label: Some("Vector Buffer"),
+                    size: (type_size * n_size) as wgpu::BufferAddress,
                     usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
                     mapped_at_creation: false,
                 }
@@ -62,7 +61,7 @@ impl Pipeline {
             device.create_buffer(
                 &wgpu::BufferDescriptor {
                     label: Some("Output buffer"),
-                    size: (type_size * m_size * k_size) as wgpu::BufferAddress,
+                    size: (type_size * m_size * n_size) as wgpu::BufferAddress,
                     usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
                     mapped_at_creation: false,
                 }
@@ -73,7 +72,7 @@ impl Pipeline {
         //Create bind group(s)
         let bind_group_layout_0 = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
-                label: Some("Matrix multiply bind group layout 0"),
+                label: Some("Batch Add Vector bind group layout 0"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::COMPUTE,
@@ -124,7 +123,7 @@ impl Pipeline {
         );
         let bind_group_0 = device.create_bind_group(
             &wgpu::BindGroupDescriptor {
-                label:  Some("Matrix multiply bind group 0"),
+                label:  Some("Batch Add Vector bind group 0"),
                 layout: &bind_group_layout_0,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
@@ -132,11 +131,11 @@ impl Pipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: matrix_a_buffer.as_entire_binding(),
+                    resource: matrix_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: matrix_b_buffer.as_entire_binding(),
+                    resource: vector_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
@@ -167,7 +166,7 @@ impl Pipeline {
 
         let compute_pipeline = device.create_compute_pipeline(
             &wgpu::ComputePipelineDescriptor {
-                label: Some("Matrix multiply pipeline"),
+                label: Some("Batch add pipeline"),
                 layout: Some(&pipeline_layout),
                 module: &cs_module,
                 entry_point: "main",
@@ -176,25 +175,25 @@ impl Pipeline {
 
          Pipeline {
             uniform_buffer,
-            matrix_a_buffer,
-            matrix_b_buffer,
+            matrix_buffer,
+            vector_buffer,
             output_buffer,
             bind_group_0,
             compute_pipeline,
         }
     }
 
-    pub fn run(&self, anchor: &super::Device, encoder: &mut wgpu::CommandEncoder, m_size: usize, n_size: usize, k_size: usize,) {
+    pub fn run(&self, anchor: &super::Device, encoder: &mut wgpu::CommandEncoder, m_size: usize, n_size: usize,) {
         //Create compute pass
         let mut compute_pass = encoder.begin_compute_pass(
             &wgpu::ComputePassDescriptor {
-                label: Some("Matrix multiply"),
+                label: Some("Batch add"),
             }
         );
 
         compute_pass.set_pipeline(&self.compute_pipeline);
         compute_pass.set_bind_group(0, &self.bind_group_0, &[]);
-        //Work groups of X = m_size, Y = k_size, Z = 1
-        compute_pass.dispatch(m_size as u32, k_size as u32, 1);
+        //Work groups of X = m_size, Y = n_size, Z = 1
+        compute_pass.dispatch(m_size as u32, n_size as u32, 1);
     }
 }
