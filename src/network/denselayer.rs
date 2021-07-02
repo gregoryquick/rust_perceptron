@@ -1,22 +1,20 @@
 use crate::pipelines;
 
-struct Denselayer {
-    weights: Vec<f32>,
-    biases: Vec<f32>,
+pub struct Denselayer {
+    pub weights: Vec<f32>,
+    pub biases: Vec<f32>,
 }
 
 impl Denselayer {
-    fn load_buffers(self) -> Vec<wgpu::Buffer> {
-        return Vec::new();
-    }
-
-    fn forward<T: bytemuck::Pod>(self, input: wgpu::Buffer,
+    pub fn forward<T: bytemuck::Pod>(self, input: wgpu::Buffer,
                                  anchor: &pipelines::Device,
                                  encoder: &mut wgpu::CommandEncoder,
                                  output_dimension: usize,
                                  data_dimension: usize,
-                                 batch_size:usize,) -> wgpu::Buffer {
+                                 batch_size: usize,) -> wgpu::Buffer {
+        
         let device = &anchor.device;
+        
         //Load data to gpu
         use wgpu::util::{BufferInitDescriptor, DeviceExt};
         let layer_weights: wgpu::Buffer = device.create_buffer_init(
@@ -35,6 +33,7 @@ impl Denselayer {
             }
         );
 
+        //Create weight application pipeline
         let weight_pipeline = pipelines::matrixmultiply::Pipeline::new::<T>(anchor, (
                 None,
                 Some(layer_weights),
@@ -45,10 +44,26 @@ impl Denselayer {
             data_dimension,
             batch_size,
         );
-        
+
+        //Run weight pipeline
+        weight_pipeline.run(anchor, encoder, output_dimension, data_dimension, batch_size);
+
+        //Create bias pipeline
+        let bias_pipeline = pipelines::addvectortobatch::Pipeline::new::<T>(anchor, (
+                None,
+                Some(weight_pipeline.output_buffer),
+                Some(layer_biases),
+                None,
+            ),
+            output_dimension,
+            batch_size,
+        );
+
+        //Run bias pipeline
+        bias_pipeline.run(anchor, encoder, output_dimension, batch_size);
 
         //Return
-        weight_pipeline.output_buffer
+        bias_pipeline.output_buffer
     }
 }
 

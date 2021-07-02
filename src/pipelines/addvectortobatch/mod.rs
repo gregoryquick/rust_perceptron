@@ -8,11 +8,11 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    //Take an n-length vector and add it across m to an m x n matrix
+    //Take an m-length vector and add it across n to an m x n matrix
     pub fn new<T: bytemuck::Pod>(anchor: &super::Device,
                                  buffers: (Option<wgpu::Buffer>, // uniform buffer
                                            Option<wgpu::Buffer>, // m x n matrix
-                                           Option<wgpu::Buffer>, // n-length vector
+                                           Option<wgpu::Buffer>, // m-length vector
                                            Option<wgpu::Buffer>),// output
                                  m_size: usize,
                                  n_size: usize,) -> Self {
@@ -49,7 +49,7 @@ impl Pipeline {
             device.create_buffer(
                 &wgpu::BufferDescriptor {
                     label: Some("Vector Buffer"),
-                    size: (type_size * n_size) as wgpu::BufferAddress,
+                    size: (type_size * m_size) as wgpu::BufferAddress,
                     usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
                     mapped_at_creation: false,
                 }
