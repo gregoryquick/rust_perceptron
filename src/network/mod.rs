@@ -2,43 +2,57 @@ use crate::pipelines;
 
 use rand::prelude::*;
 use futures::executor::block_on;
+use serde::{Serialize, Deserialize};
+use std::fs::File;
+
 
 pub mod denselayer;
 
+#[derive(Serialize, Deserialize)]
 pub struct NeuralNetwork {
-    input_size: usize,
-    output_size: usize,
-    layer: denselayer::Denselayer
+    sizes: Vec<usize>,
+    layers: Vec<denselayer::Denselayer>,
 }
 
 impl NeuralNetwork {
-    pub fn new(input_size: usize, output_size: usize) -> Self{
+    pub fn new(sizes: Vec<usize>,) -> Self {
         let mut rng = rand::thread_rng();
         use rand::distributions::Uniform;
         let dist = Uniform::new(-1.0,1.0);
         
-        let layer = denselayer::Denselayer{
+        let mut layers = Vec::new();
+        layers.push(denselayer::Denselayer{
             weights:{
-                let mut vector: Vec<f32> = vec![0f32; input_size * output_size];
+                let mut vector: Vec<f32> = vec![0f32; sizes[0] * sizes[1]];
                 for num in vector.iter_mut() {
                     *num = rng.sample(dist);
                 }
                 vector
             },
             biases:{
-                 let mut vector: Vec<f32> = vec![0f32; output_size];
+                 let mut vector: Vec<f32> = vec![0f32; sizes[1]];
                  for num in vector.iter_mut() {
                     *num = rng.sample(dist);
                  }
                  vector
             },
-        };
+        });
         
-        NeuralNetwork{
-            input_size,
-            output_size,
-            layer,
+        NeuralNetwork {
+            sizes,
+            layers,
         }
+    }
+
+    pub fn save(&self, filelocation: &str) {
+        let file = File::create(filelocation).unwrap();
+        bincode::serialize_into(&file, &self).unwrap();
+    }
+
+    pub fn load(filelocation: &str) -> Self {
+        let file = File::open(filelocation).unwrap();
+        let network: NeuralNetwork = bincode::deserialize_from(&file).unwrap();
+        network
     }
 
     pub fn feedforward<T: bytemuck::Pod>(self, input: Vec<T>, batch_size: usize,) -> Option<Vec<T>> {
@@ -63,12 +77,12 @@ impl NeuralNetwork {
             }
         );
         //Run through first layer
-        let output_buffer = self.layer.forward::<T>(
+        let output_buffer = self.layers[0].forward::<T>(
             input_buffer,
             &anchor,
             &mut encoder,
-            self.output_size,
-            self.input_size,
+            self.sizes[1],
+            self.sizes[0],
             batch_size,
         );
 
@@ -76,7 +90,7 @@ impl NeuralNetwork {
         let staging_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("Staging buffer"),
-                size: (type_size * self.output_size * batch_size) as wgpu::BufferAddress,
+                size: (type_size * self.sizes[1] * batch_size) as wgpu::BufferAddress,
                 usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
                 mapped_at_creation: false,
             }
@@ -86,7 +100,7 @@ impl NeuralNetwork {
         encoder.copy_buffer_to_buffer(
             &output_buffer, 0,
             &staging_buffer, 0,
-            (type_size * self.output_size * batch_size) as wgpu::BufferAddress,
+            (type_size * self.sizes[1] * batch_size) as wgpu::BufferAddress,
         );
 
         //Submit encoder

@@ -14,7 +14,10 @@ fn main() {
     println!("Label:");
     println!("{:?}", batch_labels);
 
-    let my_network = network::NeuralNetwork::new(28*28, 10);
+    //let topology: Vec<usize> = vec![28*28, 10];
+    //let my_network = network::NeuralNetwork::new(topology);
+    //my_network.save("weights/network.bin");
+    let my_network = network::NeuralNetwork::load("weights/network.bin");
 
     println!("Prediction:");
     let input_data = {

@@ -1,12 +1,15 @@
 use crate::pipelines;
 
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Denselayer {
     pub weights: Vec<f32>,
     pub biases: Vec<f32>,
 }
 
 impl Denselayer {
-    pub fn forward<T: bytemuck::Pod>(self, input: wgpu::Buffer,
+    pub fn forward<T: bytemuck::Pod>(&self, input: wgpu::Buffer,
                                  anchor: &pipelines::Device,
                                  encoder: &mut wgpu::CommandEncoder,
                                  output_dimension: usize,
