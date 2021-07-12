@@ -21,22 +21,26 @@ impl NeuralNetwork {
         let dist = Uniform::new(-1.0,1.0);
         
         let mut layers = Vec::new();
-        layers.push(denselayer::Denselayer{
-            weights:{
-                let mut vector: Vec<f32> = vec![0f32; sizes[0] * sizes[1]];
-                for num in vector.iter_mut() {
-                    *num = rng.sample(dist);
-                }
-                vector
-            },
-            biases:{
-                 let mut vector: Vec<f32> = vec![0f32; sizes[1]];
-                 for num in vector.iter_mut() {
-                    *num = rng.sample(dist);
-                 }
-                 vector
-            },
-        });
+
+        for (input_size, output_size) in 
+        sizes.split_last().unwrap().1.iter().zip(sizes.split_first().unwrap().1) {
+            layers.push(denselayer::Denselayer{
+                weights:{
+                    let mut vector: Vec<f32> = vec![0f32; *input_size * *output_size];
+                    for num in vector.iter_mut() {
+                        *num = rng.sample(dist);
+                    }
+                    vector
+                },
+                biases:{
+                    let mut vector: Vec<f32> = vec![0f32; *output_size];
+                    for num in vector.iter_mut() {
+                        *num = rng.sample(dist);
+                    }
+                    vector
+                },
+            });
+        }
         
         NeuralNetwork {
             sizes,
@@ -70,27 +74,36 @@ impl NeuralNetwork {
                 usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
             }
         );
+
         //Create command buffer encoder
         let mut encoder = device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor {
                 label: None 
             }
         );
-        //Run through first layer
-        let output_buffer = self.layers[0].forward::<T>(
-            input_buffer,
-            &anchor,
-            &mut encoder,
-            self.sizes[1],
-            self.sizes[0],
-            batch_size,
-        );
 
+        //Feed input through layers to get output
+        let output_buffer = self.sizes.split_last().unwrap().1.iter()
+        .zip(self.sizes.split_first().unwrap().1)
+        .zip(self.layers.iter())
+        .fold(input_buffer, |buffer, info| {
+            let (input_size, output_size) = info.0;
+            let layer = info.1;
+            layer.forward::<T>(
+                buffer,
+                &anchor,
+                &mut encoder,
+                *output_size,
+                *input_size,
+                batch_size,
+            )
+        });
+        
         //Create staging buffer for loading out of gpu
         let staging_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("Staging buffer"),
-                size: (type_size * self.sizes[1] * batch_size) as wgpu::BufferAddress,
+                size: (type_size * self.sizes.split_last().unwrap().0 * batch_size) as wgpu::BufferAddress,
                 usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
                 mapped_at_creation: false,
             }
@@ -100,7 +113,7 @@ impl NeuralNetwork {
         encoder.copy_buffer_to_buffer(
             &output_buffer, 0,
             &staging_buffer, 0,
-            (type_size * self.sizes[1] * batch_size) as wgpu::BufferAddress,
+            (type_size * self.sizes.split_last().unwrap().0 * batch_size) as wgpu::BufferAddress,
         );
 
         //Submit encoder
