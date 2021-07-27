@@ -1,18 +1,18 @@
 pub struct Pipeline {
     pub uniform_buffer: wgpu::Buffer,
-    pub matrix_buffer: wgpu::Buffer,
-    pub vector_buffer: wgpu::Buffer,
+    pub matrix_buffer_a: wgpu::Buffer,
+    pub matrix_buffer_b: wgpu::Buffer,
     pub output_buffer: wgpu::Buffer,
     bind_group_0: wgpu::BindGroup,
     compute_pipeline: wgpu::ComputePipeline,
 }
 
 impl Pipeline {
-    //Take an m-length vector and add it across n to an m x n matrix
+    //Take an m x n matrix and multiply with an m x n matrix elementwise
     pub fn new<T: bytemuck::Pod>(anchor: &super::Device,
                                  buffers: (Option<wgpu::Buffer>, // uniform buffer
                                            Option<wgpu::Buffer>, // m x n matrix
-                                           Option<wgpu::Buffer>, // m-length vector
+                                            Option<wgpu::Buffer>,// m x n matrix
                                            Option<wgpu::Buffer>),// output
                                  m_size: usize,
                                  n_size: usize,) -> Self {
@@ -33,10 +33,10 @@ impl Pipeline {
         });
         //0-0
 
-        let matrix_buffer = buffers.1.unwrap_or(
+        let matrix_buffer_a = buffers.1.unwrap_or(
             device.create_buffer(
                 &wgpu::BufferDescriptor {
-                    label: Some("Batch Buffer"),
+                    label: Some("Batch Buffer A"),
                     size: (type_size * m_size * n_size) as wgpu::BufferAddress,
                     usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
                     mapped_at_creation: false,
@@ -44,12 +44,12 @@ impl Pipeline {
             )
         );
         //0-1
-
-        let vector_buffer = buffers.2.unwrap_or(
+        
+        let matrix_buffer_b = buffers.2.unwrap_or(
             device.create_buffer(
                 &wgpu::BufferDescriptor {
-                    label: Some("Vector Buffer"),
-                    size: (type_size * m_size) as wgpu::BufferAddress,
+                    label: Some("Batch Buffer B"),
+                    size: (type_size * m_size * n_size) as wgpu::BufferAddress,
                     usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
                     mapped_at_creation: false,
                 }
@@ -72,7 +72,7 @@ impl Pipeline {
         //Create bind group(s)
         let bind_group_layout_0 = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
-                label: Some("Batch Add Vector bind group layout 0"),
+                label: Some("Elementwise Multiplication bind group layout 0"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::COMPUTE,
@@ -123,7 +123,7 @@ impl Pipeline {
         );
         let bind_group_0 = device.create_bind_group(
             &wgpu::BindGroupDescriptor {
-                label:  Some("Batch Add Vector bind group 0"),
+                label:  Some("Elementwise Multiplication bind group 0"),
                 layout: &bind_group_layout_0,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
@@ -131,12 +131,13 @@ impl Pipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: matrix_buffer.as_entire_binding(),
+                    resource: matrix_buffer_a.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: vector_buffer.as_entire_binding(),
+                    resource: matrix_buffer_b.as_entire_binding(),
                 },
+
                 wgpu::BindGroupEntry {
                     binding: 3,
                     resource: output_buffer.as_entire_binding(),
@@ -147,7 +148,7 @@ impl Pipeline {
         //Create compute pipeline
         let cs_src = include_str!("shader.comp");
         let mut compiler = shaderc::Compiler::new().unwrap();
-        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "addvectortobatch.comp", "main", None).unwrap();
+        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "elementmultiply.comp", "main", None).unwrap();
         let cs_module = device.create_shader_module(
             &wgpu::ShaderModuleDescriptor {
                 label: None,
@@ -166,7 +167,7 @@ impl Pipeline {
 
         let compute_pipeline = device.create_compute_pipeline(
             &wgpu::ComputePipelineDescriptor {
-                label: Some("Batch add pipeline"),
+                label: Some("Elementwise Multiplication pipeline"),
                 layout: Some(&pipeline_layout),
                 module: &cs_module,
                 entry_point: "main",
@@ -175,8 +176,8 @@ impl Pipeline {
 
          Pipeline {
             uniform_buffer,
-            matrix_buffer,
-            vector_buffer,
+            matrix_buffer_a,
+            matrix_buffer_b,
             output_buffer,
             bind_group_0,
             compute_pipeline,
@@ -187,7 +188,7 @@ impl Pipeline {
         //Create compute pass
         let mut compute_pass = encoder.begin_compute_pass(
             &wgpu::ComputePassDescriptor {
-                label: Some("Batch add"),
+                label: Some("Elementwise Multiplication"),
             }
         );
 

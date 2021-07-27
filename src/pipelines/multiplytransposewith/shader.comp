@@ -18,11 +18,11 @@ layout(set = 0, binding = 3) buffer Target {
 };
 
 float get_element(uint index_of_row, uint index_of_column) {
-    //matrix a: row_size x contract_size
+    //matrix a: contract_size x row_size
     //matrix b: contract_size x column_size
     float accumulator = 0.0;
     for(uint contraction_index = 0; contraction_index < max_contraction_index; contraction_index++){
-        accumulator += matrix_a[index_of_row * max_contraction_index + contraction_index]
+        accumulator += matrix_a[contraction_index * max_row_index + index_of_row]
             * matrix_b[contraction_index * max_column_index + index_of_column];
     }
     return accumulator;

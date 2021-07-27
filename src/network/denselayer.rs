@@ -10,15 +10,15 @@ pub struct Denselayer {
 
 impl Denselayer {
     pub fn forward<T: bytemuck::Pod>(&self, input: wgpu::Buffer,
-                                 anchor: &pipelines::Device,
-                                 encoder: &mut wgpu::CommandEncoder,
-                                 output_dimension: usize,
-                                 data_dimension: usize,
-                                 batch_size: usize,) -> wgpu::Buffer {
+                                     anchor: &pipelines::Device,
+                                     encoder: &mut wgpu::CommandEncoder,
+                                     output_dimension: usize,
+                                     data_dimension: usize,
+                                     batch_size: usize,) -> wgpu::Buffer {
         
         let device = &anchor.device;
         
-        //Load data to gpu
+        //Load layer data to gpu
         use wgpu::util::{BufferInitDescriptor, DeviceExt};
         let layer_weights: wgpu::Buffer = device.create_buffer_init(
             &BufferInitDescriptor {
@@ -65,8 +65,34 @@ impl Denselayer {
         //Run bias pipeline
         bias_pipeline.run(anchor, encoder, output_dimension, batch_size);
 
+        //Create activation pipeline
+        let activation_pipeline = pipelines::leakyrelu::Pipeline::new::<T>(anchor, (
+                Some(bias_pipeline.uniform_buffer),
+                Some(bias_pipeline.output_buffer),
+                None,
+            ),
+            output_dimension,
+            batch_size,
+        );
+
+        //Run activation pipeline
+        activation_pipeline.run(anchor, encoder, output_dimension, batch_size);
+
+        //Create activationprime pipeline
+        let activationprime_pipeline = pipelines::leakyreluprime::Pipeline::new::<T>(anchor, (
+                Some(activation_pipeline.uniform_buffer),
+                Some(activation_pipeline.matrix_buffer),
+                None,
+            ),
+            output_dimension,
+            batch_size,
+        );
+                
+        //Run activationprime pipeline
+        activationprime_pipeline.run(anchor, encoder, output_dimension, batch_size);
+
         //Return
-        bias_pipeline.output_buffer
+        activation_pipeline.output_buffer
     }
 }
 

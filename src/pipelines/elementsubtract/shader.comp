@@ -1,15 +1,13 @@
 #version 450
 layout(set = 0, binding = 0) uniform UniformBuffer {
     uint max_row_index;
-    uint max_contraction_index;
     uint max_column_index;
 };
 
-layout(set = 0, binding = 1) buffer MatrixA {
+layout(set = 0, binding = 1) buffer Matrix_A {
     float[] matrix_a;
 };
-
-layout(set = 0, binding = 2) buffer MatrixB {
+layout(set = 0, binding = 2) buffer Matrix_B {
     float[] matrix_b;
 };
 
@@ -18,14 +16,10 @@ layout(set = 0, binding = 3) buffer Target {
 };
 
 float get_element(uint index_of_row, uint index_of_column) {
-    //matrix a: row_size x contract_size
-    //matrix b: contract_size x column_size
-    float accumulator = 0.0;
-    for(uint contraction_index = 0; contraction_index < max_contraction_index; contraction_index++){
-        accumulator += matrix_a[index_of_row * max_contraction_index + contraction_index]
-            * matrix_b[contraction_index * max_column_index + index_of_column];
-    }
-    return accumulator;
+    //Matrix_a: row_size x column_size
+    //Matrix_b: row_size x column_size
+
+    return matrix_a[index_of_column * max_row_index + index_of_row] - matrix_b[index_of_column * max_row_index + index_of_row];
 }
 
 void main() {

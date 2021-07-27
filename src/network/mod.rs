@@ -59,7 +59,7 @@ impl NeuralNetwork {
         network
     }
 
-    pub fn feedforward<T: bytemuck::Pod>(self, input: Vec<T>, batch_size: usize,) -> Option<Vec<T>> {
+    pub fn feedforward<T: bytemuck::Pod>(&self, input: Vec<T>, batch_size: usize,) -> Option<Vec<T>> {
         //Connect to device
         let anchor = block_on(pipelines::Device::new());
         let device = &anchor.device;
@@ -83,21 +83,56 @@ impl NeuralNetwork {
         );
 
         //Feed input through layers to get output
-        let output_buffer = self.sizes.split_last().unwrap().1.iter()
+        let layer_iterator = self.sizes.split_last().unwrap().1.iter()
         .zip(self.sizes.split_first().unwrap().1)
-        .zip(self.layers.iter())
-        .fold(input_buffer, |buffer, info| {
-            let (input_size, output_size) = info.0;
-            let layer = info.1;
-            layer.forward::<T>(
-                buffer,
+        .zip(self.layers.iter());
+
+        let type_size = std::mem::size_of::<T>();
+
+        let computation_results = layer_iterator.scan(input_buffer, |buffer, (topology, layer)| {
+            let (&input_size, &output_size) = topology;
+
+            let computation_buffer =  device.create_buffer( &wgpu::BufferDescriptor {
+                label: Some("Computation buffer"),
+                size: (type_size * input_size * batch_size) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
+                mapped_at_creation: false,
+            });
+
+            encoder.copy_buffer_to_buffer(
+                buffer, 0,
+                &computation_buffer, 0,
+                (type_size * input_size * batch_size) as wgpu::BufferAddress,
+            );
+
+            let output = layer.forward::<T>(
+                computation_buffer,
                 &anchor,
                 &mut encoder,
-                *output_size,
-                *input_size,
+                output_size,
+                input_size,
                 batch_size,
-            )
+            );
+
+            let computation_buffer =  device.create_buffer( &wgpu::BufferDescriptor {
+                label: Some("Computation buffer"),
+                size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::COPY_SRC ,
+                mapped_at_creation: false,
+            });
+
+            encoder.copy_buffer_to_buffer(
+                &output, 0,
+                &computation_buffer, 0,
+                (type_size * output_size * batch_size) as wgpu::BufferAddress,
+            );
+
+            
+            *buffer = computation_buffer;
+            Some(output)
         });
+
+        let output_buffer = computation_results.last().unwrap();
         
         //Create staging buffer for loading out of gpu
         let staging_buffer = device.create_buffer(

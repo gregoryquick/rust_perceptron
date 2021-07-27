@@ -1,18 +1,16 @@
 pub struct Pipeline {
     pub uniform_buffer: wgpu::Buffer,
     pub matrix_buffer: wgpu::Buffer,
-    pub vector_buffer: wgpu::Buffer,
     pub output_buffer: wgpu::Buffer,
     bind_group_0: wgpu::BindGroup,
     compute_pipeline: wgpu::ComputePipeline,
 }
 
 impl Pipeline {
-    //Take an m-length vector and add it across n to an m x n matrix
+    //Take an m x n matrix and apply leaky relu elementwise
     pub fn new<T: bytemuck::Pod>(anchor: &super::Device,
                                  buffers: (Option<wgpu::Buffer>, // uniform buffer
                                            Option<wgpu::Buffer>, // m x n matrix
-                                           Option<wgpu::Buffer>, // m-length vector
                                            Option<wgpu::Buffer>),// output
                                  m_size: usize,
                                  n_size: usize,) -> Self {
@@ -44,20 +42,8 @@ impl Pipeline {
             )
         );
         //0-1
-
-        let vector_buffer = buffers.2.unwrap_or(
-            device.create_buffer(
-                &wgpu::BufferDescriptor {
-                    label: Some("Vector Buffer"),
-                    size: (type_size * m_size) as wgpu::BufferAddress,
-                    usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
-                    mapped_at_creation: false,
-                }
-            )
-        );
-        //0-2
         
-        let output_buffer = buffers.3.unwrap_or(
+        let output_buffer = buffers.2.unwrap_or(
             device.create_buffer(
                 &wgpu::BufferDescriptor {
                     label: Some("Output buffer"),
@@ -67,12 +53,12 @@ impl Pipeline {
                 }
             )
         );
-        //0-3
+        //0-2
         
         //Create bind group(s)
         let bind_group_layout_0 = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
-                label: Some("Batch Add Vector bind group layout 0"),
+                label: Some("Leaky Relu bind group layout 0"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::COMPUTE,
@@ -100,18 +86,6 @@ impl Pipeline {
                     visibility: wgpu::ShaderStage::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage {
-                            read_only: true,
-                        },
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(0),
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStage::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage {
                             read_only: false,
                         },
                         has_dynamic_offset: false,
@@ -123,7 +97,7 @@ impl Pipeline {
         );
         let bind_group_0 = device.create_bind_group(
             &wgpu::BindGroupDescriptor {
-                label:  Some("Batch Add Vector bind group 0"),
+                label:  Some("Leaky Relu bind group 0"),
                 layout: &bind_group_layout_0,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
@@ -135,10 +109,6 @@ impl Pipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: vector_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
                     resource: output_buffer.as_entire_binding(),
                 },],
             }
@@ -147,7 +117,7 @@ impl Pipeline {
         //Create compute pipeline
         let cs_src = include_str!("shader.comp");
         let mut compiler = shaderc::Compiler::new().unwrap();
-        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "addvectortobatch.comp", "main", None).unwrap();
+        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "leakyrelu.comp", "main", None).unwrap();
         let cs_module = device.create_shader_module(
             &wgpu::ShaderModuleDescriptor {
                 label: None,
@@ -166,7 +136,7 @@ impl Pipeline {
 
         let compute_pipeline = device.create_compute_pipeline(
             &wgpu::ComputePipelineDescriptor {
-                label: Some("Batch add pipeline"),
+                label: Some("Leaky Relu pipeline"),
                 layout: Some(&pipeline_layout),
                 module: &cs_module,
                 entry_point: "main",
@@ -176,7 +146,6 @@ impl Pipeline {
          Pipeline {
             uniform_buffer,
             matrix_buffer,
-            vector_buffer,
             output_buffer,
             bind_group_0,
             compute_pipeline,
@@ -187,7 +156,7 @@ impl Pipeline {
         //Create compute pass
         let mut compute_pass = encoder.begin_compute_pass(
             &wgpu::ComputePassDescriptor {
-                label: Some("Batch add"),
+                label: Some("Leakt Relu"),
             }
         );
 
