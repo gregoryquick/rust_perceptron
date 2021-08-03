@@ -1,9 +1,11 @@
 use crate::pipelines;
+use crate::optimisers;
 
 use rand::prelude::*;
 use futures::executor::block_on;
 use serde::{Serialize, Deserialize};
 use std::fs::File;
+use std::collections::VecDeque;
 
 
 pub mod denselayer;
@@ -59,9 +61,10 @@ impl NeuralNetwork {
         network
     }
 
-    pub fn feedforward<T: bytemuck::Pod>(&self, input: Vec<T>, batch_size: usize,) -> Option<Vec<T>> {
+    pub fn feedforward<T: bytemuck::Pod>(&self, input: &Vec<T>, batch_size: usize,) -> Option<Vec<T>> {
         //Connect to device
         let anchor = block_on(pipelines::Device::new());
+        let queue = &anchor.queue;
         let device = &anchor.device;
         let type_size = std::mem::size_of::<T>();
         
@@ -87,52 +90,18 @@ impl NeuralNetwork {
         .zip(self.sizes.split_first().unwrap().1)
         .zip(self.layers.iter());
 
-        let type_size = std::mem::size_of::<T>();
-
-        let computation_results = layer_iterator.scan(input_buffer, |buffer, (topology, layer)| {
+        let output_buffer = layer_iterator.fold(input_buffer, |buffer, (topology, layer)| {
             let (&input_size, &output_size) = topology;
 
-            let computation_buffer =  device.create_buffer( &wgpu::BufferDescriptor {
-                label: Some("Computation buffer"),
-                size: (type_size * input_size * batch_size) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
-                mapped_at_creation: false,
-            });
-
-            encoder.copy_buffer_to_buffer(
-                buffer, 0,
-                &computation_buffer, 0,
-                (type_size * input_size * batch_size) as wgpu::BufferAddress,
-            );
-
-            let output = layer.forward::<T>(
-                computation_buffer,
+            layer.forward::<T>(
+                buffer,
                 &anchor,
                 &mut encoder,
                 output_size,
                 input_size,
                 batch_size,
-            );
-
-            let computation_buffer =  device.create_buffer( &wgpu::BufferDescriptor {
-                label: Some("Computation buffer"),
-                size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::COPY_SRC ,
-                mapped_at_creation: false,
-            });
-
-            encoder.copy_buffer_to_buffer(
-                &output, 0,
-                &computation_buffer, 0,
-                (type_size * output_size * batch_size) as wgpu::BufferAddress,
-            );
-
-            
-            *buffer = computation_buffer;
-            Some(output)
+            )
         });
-
-        let output_buffer = computation_results.last().unwrap();
         
         //Create staging buffer for loading out of gpu
         let staging_buffer = device.create_buffer(
@@ -152,8 +121,6 @@ impl NeuralNetwork {
         );
 
         //Submit encoder
-        let queue = &anchor.queue;
-
         queue.submit(Some(encoder.finish()));
 
         //Create future of the computation
@@ -183,5 +150,153 @@ impl NeuralNetwork {
                 }
             }
         })
+    }
+
+    pub fn backprop<T: bytemuck::Pod>(&mut self, optimiser: &mut optimisers::Stochasticgradientdescent, input: &Vec<T>, labels: &Vec<T>, batch_size: usize,) {
+        //Connect to device
+        let anchor = block_on(pipelines::Device::new());
+        let device = &anchor.device;
+        let queue = &anchor.queue;
+        let type_size = std::mem::size_of::<T>();
+        
+        //Load input and labels to gpu
+        use wgpu::util::{BufferInitDescriptor, DeviceExt};
+        let input_buffer = device.create_buffer_init(
+            &BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(&input[..]),
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+            }
+        );
+
+        let label_buffer = device.create_buffer_init(
+            &BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(&labels[..]),
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+            }
+        );
+
+        //Create command buffer encoder
+        let mut encoder = device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor {
+                label: None 
+            }
+        );
+
+        //Get feed forward output data
+        let layer_iterator = self.sizes.split_last().unwrap().1.iter()
+        .zip(self.sizes.split_first().unwrap().1)
+        .zip(self.layers.iter());
+
+        let type_size = std::mem::size_of::<T>();
+
+        let intermediate_values: VecDeque<(wgpu::Buffer, wgpu::Buffer, wgpu::Buffer)> = layer_iterator.scan(input_buffer, |buffer, (topology, layer)| {
+            let (&input_size, &output_size) = topology;
+
+            let computation_buffer =  device.create_buffer( &wgpu::BufferDescriptor {
+                label: Some("Computation buffer"),
+                size: (type_size * input_size * batch_size) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
+                mapped_at_creation: false,
+            });
+
+            encoder.copy_buffer_to_buffer(
+                buffer, 0,
+                &computation_buffer, 0,
+                (type_size * input_size * batch_size) as wgpu::BufferAddress,
+            );
+
+            let (output, outputprime, input) = layer.forward_for_backprop::<T>(
+                computation_buffer,
+                &anchor,
+                &mut encoder,
+                output_size,
+                input_size,
+                batch_size,
+            );
+
+            let computation_buffer =  device.create_buffer( &wgpu::BufferDescriptor {
+                label: Some("Computation buffer"),
+                size: (type_size * output_size * batch_size) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::COPY_SRC ,
+                mapped_at_creation: false,
+            });
+
+            encoder.copy_buffer_to_buffer(
+                &output, 0,
+                &computation_buffer, 0,
+                (type_size * output_size * batch_size) as wgpu::BufferAddress,
+            );
+
+            
+            *buffer = computation_buffer;
+            Some((output, outputprime, input))
+        }).collect();
+
+        let mut backprop_iterator = self.sizes.split_last().unwrap().1.iter()
+        .zip(self.sizes.split_first().unwrap().1)
+        .zip(intermediate_values.into_iter())
+        .zip(self.layers.iter_mut()).rev();
+
+        match backprop_iterator.next() {
+            Some(((beginning_topology, beginning_data), begining_layer)) => {
+                let initial_step = {
+                    let (&data_dimension, &output_dimension) = beginning_topology;
+
+                    let (layer_activation, layer_activationprime, layer_input) = beginning_data;
+
+                    //Create loss pipeline
+                    let loss_pipeline = pipelines::elementsubtract::Pipeline::new::<T>(&anchor, (
+                            None,
+                            Some(layer_activation),
+                            Some(label_buffer),
+                            None,
+                        ),
+                        output_dimension,
+                        batch_size,
+                    );
+
+                    //Run sensitivity pipeline
+                    loss_pipeline.run(&anchor, &mut encoder, output_dimension, batch_size);
+                
+                    //Submit encoder
+                    queue.submit(Some(encoder.finish()));
+
+                    //Wait for computation to complete
+                    device.poll(wgpu::Maintain::Wait);
+                    begining_layer.backprop::<T>(
+                        &anchor,
+                        optimiser,
+                        layer_input,
+                        loss_pipeline.output_buffer,
+                        layer_activationprime,
+                        output_dimension,
+                        data_dimension,
+                        batch_size,
+                    )
+                };
+
+                backprop_iterator.fold(initial_step, |intermediate_buffer, ((topology, data), layer)| {
+                    let (&data_dimension, &output_dimension) = topology;
+
+                    let (layer_activation, layer_activationprime, layer_input) = data;
+
+                    layer.backprop::<T>(
+                        &anchor,
+                        optimiser,
+                        layer_input,
+                        intermediate_buffer,
+                        layer_activationprime,
+                        output_dimension,
+                        data_dimension,
+                        batch_size,
+                    )
+                });
+            },
+            None => {
+                println!("Backprop Failed: No layers")
+            }
+        }
     }
 }

@@ -6,6 +6,8 @@ pub mod leakyreluprime;
 pub mod matrixmultiply;
 pub mod multiplybytranspose;
 pub mod multiplytransposewith;
+pub mod scalarmultiply;
+
 
 
 pub struct Device {
