@@ -1,6 +1,4 @@
 pub struct Pipeline {
-    pub uniform_buffer: wgpu::Buffer,
-    pub matrix_buffer: wgpu::Buffer,
     pub output_buffer: wgpu::Buffer,
     bind_group_0: wgpu::BindGroup,
     compute_pipeline: wgpu::ComputePipeline,
@@ -9,9 +7,8 @@ pub struct Pipeline {
 impl Pipeline {
     //Take an m x n matrix and apply leaky relu elementwise
     pub fn new<T: bytemuck::Pod>(anchor: &super::Device,
-                                 buffers: (Option<wgpu::Buffer>, // uniform buffer
-                                           Option<wgpu::Buffer>, // m x n matrix
-                                           Option<wgpu::Buffer>),// output
+                                 buffers: (&wgpu::Buffer, // uniform buffer
+                                           &wgpu::Buffer), // m x n matrix
                                  m_size: usize,
                                  n_size: usize,) -> Self {
         let type_size = std::mem::size_of::<T>();
@@ -19,39 +16,15 @@ impl Pipeline {
         //Create/load buffers
         use wgpu::util::{BufferInitDescriptor, DeviceExt};
         
-        let uniform_buffer = buffers.0.unwrap_or({
-            let uniform_data = [m_size as u32, n_size as u32,];
-            device.create_buffer_init(
-                &BufferInitDescriptor {
-                    label: Some("Uniform Buffer"),
-                    contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsage::UNIFORM,
-                }
-            )
-        });
-        //0-0
-
-        let matrix_buffer = buffers.1.unwrap_or(
-            device.create_buffer(
-                &wgpu::BufferDescriptor {
-                    label: Some("Batch Buffer"),
-                    size: (type_size * m_size * n_size) as wgpu::BufferAddress,
-                    usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
-                    mapped_at_creation: false,
-                }
-            )
-        );
-        //0-1
-        
-        let output_buffer = buffers.2.unwrap_or(
-            device.create_buffer(
-                &wgpu::BufferDescriptor {
-                    label: Some("Output buffer"),
-                    size: (type_size * m_size * n_size) as wgpu::BufferAddress,
-                    usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
-                    mapped_at_creation: false,
-                }
-            )
+        let uniform_buffer = buffers.0;
+        let matrix_buffer = buffers.1;        
+        let output_buffer = device.create_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("Output buffer"),
+                size: (type_size * m_size * n_size) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                mapped_at_creation: false,
+            }
         );
         //0-2
         
@@ -144,19 +117,17 @@ impl Pipeline {
         );
 
          Pipeline {
-            uniform_buffer,
-            matrix_buffer,
             output_buffer,
             bind_group_0,
             compute_pipeline,
         }
     }
 
-    pub fn run(&self, anchor: &super::Device, encoder: &mut wgpu::CommandEncoder, m_size: usize, n_size: usize,) {
+    pub fn run(&self, encoder: &mut wgpu::CommandEncoder, m_size: usize, n_size: usize,) {
         //Create compute pass
         let mut compute_pass = encoder.begin_compute_pass(
             &wgpu::ComputePassDescriptor {
-                label: Some("Leakt Relu"),
+                label: Some("Leaky Relu"),
             }
         );
 

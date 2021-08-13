@@ -1,7 +1,7 @@
 mod data;
 mod pipelines;
 mod network;
-mod optimisers;
+//mod optimisers;
 
 fn main() {
     let batch_size: usize = 1;
@@ -15,12 +15,10 @@ fn main() {
     println!("Label:");
     println!("{:?}", batch_labels);
 
-    //let topology: Vec<usize> = vec![28*28, 1024, 1024, 1024, 512, 32, 1024, 1024, 1024, 10];
-    //let my_network = network::NeuralNetwork::new(topology);
-    //my_network.save("weights/network.bin");
+    let topology: Vec<usize> = vec![28*28, 1024, 1024, 512, 32, 10];
+    let my_network = network::NeuralNetwork::new(topology);
+    my_network.save("weights/network.bin");
     let mut my_network = network::NeuralNetwork::load("weights/network.bin");
-
-    let mut optimiser = optimisers::Stochasticgradientdescent::new(0.1);
 
     //Dereference data into vectors
     let input_data = {
@@ -38,11 +36,9 @@ fn main() {
         vector
     };
 
-    println!("Prediction:");
+    println!("Prediction 0:");
     println!("{:?}", my_network.feedforward::<f32>(&input_data, batch_size).unwrap());
-    //Update weights
-    my_network.backprop::<f32>(&mut optimiser, &input_data, &label_data, batch_size);
-    println!("Prediction: 2");
+    println!("Prediction 1:");
     println!("{:?}", my_network.feedforward::<f32>(&input_data, batch_size).unwrap());
 
 }
