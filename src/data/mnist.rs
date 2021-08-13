@@ -2,29 +2,10 @@ use byteorder::{BigEndian, ReadBytesExt};
 use std::fs::File;
 use std::io::{Cursor, Read};
 use crate::data::LabeledData;
+use crate::data::DataSet;
 
-pub struct Data {
-    pub image: Vec<f32>,
-    pub classification: u8,
-}
 
-impl LabeledData<f32,u8> for Data {
-    fn get_data(&self) -> &Vec<f32> {
-        &self.image
-    }
-    
-    fn get_label(&self) -> &u8 {
-        &self.classification
-    }
-
-    fn from_label(&self) -> Vec<f32> {
-        let mut vec: Vec<f32> = vec![0f32; 10];
-        vec[self.classification as usize] = 1.0;
-        vec
-    }
-}
-
-pub(super) fn load_data(dataset_name: &str) -> Result<Vec<Data>, std::io::Error> {
+pub fn load_data(dataset_name: &str) -> Result<DataSet<f32>, std::io::Error> {
      let filename = format!("mnist/{}-labels-idx1-ubyte", dataset_name);
      let label_data = &FileData::new(&mut (File::open(filename))?)?;
      let filename = format!("mnist/{}-images-idx3-ubyte", dataset_name);
@@ -39,17 +20,22 @@ pub(super) fn load_data(dataset_name: &str) -> Result<Vec<Data>, std::io::Error>
          images.push(image_data);
      }
 
-     let classifications: Vec<u8> = label_data.data.clone();
+     let classifications: Vec<Vec<f32>> = label_data.data.clone().into_iter().map(|x| {
+        let mut vec: Vec<f32> = vec![0f32; 10];
+        vec[x as usize] = 1.0;
+        vec
+     }).collect();
      
-     let mut ret: Vec<Data> = Vec::new();
+     let mut ret: Vec<LabeledData<f32>> = Vec::new();
      for (image, classification) in images.into_iter().zip(classifications.into_iter()) {
-        ret.push(Data {
-            image,
-            classification,
-
+        ret.push(LabeledData::<f32> {
+            data: image,
+            label: classification,
         })
     }
-     Ok(ret)
+    Ok(DataSet::<f32> {
+       data: ret
+    })
 }
 
 #[derive(Debug)]

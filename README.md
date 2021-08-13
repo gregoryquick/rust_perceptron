@@ -2,4 +2,4 @@
 Implementation of perceptron that runs on the gpu in Rust
 
 ## Usage
-Requires (non-compressed) mnist dataset to be droped root folder of project
+Requires (non-compressed) mnist dataset to be dropped into the root folder of project

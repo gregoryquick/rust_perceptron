@@ -1,63 +1,68 @@
 pub struct Pipeline {
     pub uniform_buffer: wgpu::Buffer,
-    pub input_buffer_a: wgpu::Buffer,
-    pub input_buffer_b: wgpu::Buffer,
+    pub matrix_a_buffer: wgpu::Buffer,
+    pub matrix_b_buffer: wgpu::Buffer,
     pub output_buffer: wgpu::Buffer,
     bind_group_0: wgpu::BindGroup,
     compute_pipeline: wgpu::ComputePipeline,
 }
+
 impl Pipeline {
-    pub fn new<T: bytemuck::Pod>(anchor: &super::PipelineAnchor,
-                                 buffers: (Option<wgpu::Buffer>,
-                                           Option<wgpu::Buffer>,
-                                           Option<wgpu::Buffer>)
-                                 , learning_rate: T 
-                                 , _batch_size: usize,) -> Self {
+    // Contract a m x n matrix with the transpose of a k x n matrix to make a m x k matrix
+    pub fn new<T: bytemuck::Pod>(anchor: &super::Device,
+                                 buffers: (Option<wgpu::Buffer>, // uniform buffer
+                                           Option<wgpu::Buffer>, // m x n matrix
+                                           Option<wgpu::Buffer>, // k x n matrix
+                                           Option<wgpu::Buffer>),// output
+                                 m_size: usize,
+                                 n_size: usize,
+                                 k_size: usize,) -> Self {
         let type_size = std::mem::size_of::<T>();
-        let input_size = anchor.input_size;
-        let output_size = anchor.output_size;
         let device = &anchor.device;
+        //Create/load buffers
         use wgpu::util::{BufferInitDescriptor, DeviceExt};
-        //Create buffers
-        let uniform_data = [input_size as u32, output_size as u32];
-        let uniform_buffer = device.create_buffer_init(
-            &BufferInitDescriptor {
-                label: Some("Uniform Buffer"),
-                contents: &[bytemuck::bytes_of(&uniform_data), bytemuck::bytes_of(&learning_rate)].concat(),
-                usage: wgpu::BufferUsage::UNIFORM,
-            }
-        );
+        
+        let uniform_buffer = buffers.0.unwrap_or({
+            let uniform_data = [m_size as u32, n_size as u32, k_size as u32];
+            device.create_buffer_init(
+                &BufferInitDescriptor {
+                    label: Some("Uniform Buffer"),
+                    contents: bytemuck::bytes_of(&uniform_data),
+                    usage: wgpu::BufferUsage::UNIFORM,
+                }
+            )
+        });
         //0-0
 
-        let input_buffer_a = buffers.0.unwrap_or(
+        let matrix_a_buffer = buffers.1.unwrap_or(
             device.create_buffer(
                 &wgpu::BufferDescriptor {
-                    label: Some("Input Buffer A"),
-                    size: (type_size * input_size * output_size) as wgpu::BufferAddress,
+                    label: Some("Matrix A"),
+                    size: (type_size * m_size * n_size) as wgpu::BufferAddress,
                     usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
                     mapped_at_creation: false,
                 }
             )
         );
         //0-1
-        
-        let input_buffer_b = buffers.1.unwrap_or(
+
+        let matrix_b_buffer = buffers.2.unwrap_or(
             device.create_buffer(
                 &wgpu::BufferDescriptor {
-                    label: Some("Input Buffer B"),
-                    size: (type_size * input_size * output_size) as wgpu::BufferAddress,
+                    label: Some("Matrix B"),
+                    size: (type_size * k_size * n_size) as wgpu::BufferAddress,
                     usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
                     mapped_at_creation: false,
                 }
             )
         );
         //0-2
-
-        let output_buffer = buffers.2.unwrap_or(
+        
+        let output_buffer = buffers.3.unwrap_or(
             device.create_buffer(
                 &wgpu::BufferDescriptor {
                     label: Some("Output buffer"),
-                    size: (type_size * input_size * output_size) as wgpu::BufferAddress,
+                    size: (type_size * m_size * k_size) as wgpu::BufferAddress,
                     usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
                     mapped_at_creation: false,
                 }
@@ -68,7 +73,7 @@ impl Pipeline {
         //Create bind group(s)
         let bind_group_layout_0 = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
-                label: Some("Descent update group layout 0"),
+                label: Some("Multiply By Transpose bind group layout 0"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::COMPUTE,
@@ -119,7 +124,7 @@ impl Pipeline {
         );
         let bind_group_0 = device.create_bind_group(
             &wgpu::BindGroupDescriptor {
-                label:  Some("Descent update  bind group 0"),
+                label:  Some("Multiply By Transpose bind group 0"),
                 layout: &bind_group_layout_0,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
@@ -127,13 +132,12 @@ impl Pipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: input_buffer_a.as_entire_binding(),
+                    resource: matrix_a_buffer.as_entire_binding(),
                 },
-                                wgpu::BindGroupEntry {
+                wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: input_buffer_b.as_entire_binding(),
+                    resource: matrix_b_buffer.as_entire_binding(),
                 },
-
                 wgpu::BindGroupEntry {
                     binding: 3,
                     resource: output_buffer.as_entire_binding(),
@@ -142,9 +146,9 @@ impl Pipeline {
         );
 
         //Create compute pipeline
-        let cs_src = include_str!("shaders/descendgrad.comp");
+        let cs_src = include_str!("shader.comp");
         let mut compiler = shaderc::Compiler::new().unwrap();
-        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "descendgrad.comp", "main", None).unwrap();
+        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "multiplybytranspose.comp", "main", None).unwrap();
         let cs_module = device.create_shader_module(
             &wgpu::ShaderModuleDescriptor {
                 label: None,
@@ -152,7 +156,7 @@ impl Pipeline {
                 flags: wgpu::ShaderFlags::empty(),
             }
         );
-
+        
         let pipeline_layout = device.create_pipeline_layout(
             &wgpu::PipelineLayoutDescriptor {
                 label: None,
@@ -163,36 +167,34 @@ impl Pipeline {
 
         let compute_pipeline = device.create_compute_pipeline(
             &wgpu::ComputePipelineDescriptor {
-                label: Some("Descent update pipeline"),
+                label: Some("Multiply By Transpose pipeline"),
                 layout: Some(&pipeline_layout),
                 module: &cs_module,
                 entry_point: "main",
             }
         );
-        
 
-        //Return
-        Pipeline {
+         Pipeline {
             uniform_buffer,
-            input_buffer_a,
-            input_buffer_b,
+            matrix_a_buffer,
+            matrix_b_buffer,
             output_buffer,
             bind_group_0,
             compute_pipeline,
         }
     }
-    
-    pub fn run(&self, anchor: &super::PipelineAnchor, encoder: &mut wgpu::CommandEncoder, _batch_size: usize) {
+
+    pub fn run(&self, anchor: &super::Device, encoder: &mut wgpu::CommandEncoder, m_size: usize, n_size: usize, k_size: usize,) {
         //Create compute pass
         let mut compute_pass = encoder.begin_compute_pass(
-            &wgpu::ComputePassDescriptor { 
-                label: None 
+            &wgpu::ComputePassDescriptor {
+                label: Some("Multiply By Transpose"),
             }
         );
 
         compute_pass.set_pipeline(&self.compute_pipeline);
         compute_pass.set_bind_group(0, &self.bind_group_0, &[]);
-        //Work groups of X = output_size, Y = input_size, Z = 1
-        compute_pass.dispatch(anchor.output_size as u32, anchor.input_size as u32, 1);
+        //Work groups of X = m_size, Y = k_size, Z = 1
+        compute_pass.dispatch(m_size as u32, k_size as u32, 1);
     }
 }
