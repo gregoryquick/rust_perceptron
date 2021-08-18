@@ -1,12 +1,12 @@
 pub mod addvectortobatch;
-//pub mod elementmultiply;
-//pub mod elementsubtract;
+pub mod elementmultiply;
+pub mod elementsubtract;
 pub mod leakyrelu;
-//pub mod leakyreluprime;
+pub mod leakyreluprime;
 pub mod matrixmultiply;
-//pub mod multiplybytranspose;
-//pub mod multiplytransposewith;
-//pub mod scalarmultiply;
+pub mod multiplybytranspose;
+pub mod multiplytransposewith;
+pub mod scalarmultiply;
 
 
 

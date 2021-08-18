@@ -1,7 +1,4 @@
 pub struct Pipeline {
-    pub uniform_buffer: wgpu::Buffer,
-    pub matrix_a_buffer: wgpu::Buffer,
-    pub matrix_b_buffer: wgpu::Buffer,
     pub output_buffer: wgpu::Buffer,
     bind_group_0: wgpu::BindGroup,
     compute_pipeline: wgpu::ComputePipeline,
@@ -10,63 +7,33 @@ pub struct Pipeline {
 impl Pipeline {
     // Contract a n x m matrix with the transpose of a n x k matrix to make a m x k matrix
     pub fn new<T: bytemuck::Pod>(anchor: &super::Device,
-                                 buffers: (Option<wgpu::Buffer>, // uniform buffer
-                                           Option<wgpu::Buffer>, // n x m matrix
-                                           Option<wgpu::Buffer>, // n x k matrix
-                                           Option<wgpu::Buffer>),// output
+                                 buffers: (&wgpu::Buffer, // uniform buffer
+                                           &wgpu::Buffer, // n x m matrix
+                                           &wgpu::Buffer),// n x k matrix
                                  m_size: usize,
-                                 n_size: usize,
+                                 _n_size: usize,
                                  k_size: usize,) -> Self {
         let type_size = std::mem::size_of::<T>();
         let device = &anchor.device;
-        //Create/load buffers
-        use wgpu::util::{BufferInitDescriptor, DeviceExt};
         
-        let uniform_buffer = buffers.0.unwrap_or({
-            let uniform_data = [m_size as u32, n_size as u32, k_size as u32];
-            device.create_buffer_init(
-                &BufferInitDescriptor {
-                    label: Some("Uniform Buffer"),
-                    contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsage::UNIFORM,
-                }
-            )
-        });
+        //Create/load buffers
+        
+        let uniform_buffer = buffers.0;
         //0-0
 
-        let matrix_a_buffer = buffers.1.unwrap_or(
-            device.create_buffer(
-                &wgpu::BufferDescriptor {
-                    label: Some("Matrix A"),
-                    size: (type_size * m_size * n_size) as wgpu::BufferAddress,
-                    usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
-                    mapped_at_creation: false,
-                }
-            )
-        );
+        let matrix_a_buffer = buffers.1;
         //0-1
 
-        let matrix_b_buffer = buffers.2.unwrap_or(
-            device.create_buffer(
-                &wgpu::BufferDescriptor {
-                    label: Some("Matrix B"),
-                    size: (type_size * k_size * n_size) as wgpu::BufferAddress,
-                    usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
-                    mapped_at_creation: false,
-                }
-            )
-        );
+        let matrix_b_buffer = buffers.2;
         //0-2
         
-        let output_buffer = buffers.3.unwrap_or(
-            device.create_buffer(
-                &wgpu::BufferDescriptor {
-                    label: Some("Output buffer"),
-                    size: (type_size * m_size * k_size) as wgpu::BufferAddress,
-                    usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
-                    mapped_at_creation: false,
-                }
-            )
+        let output_buffer = device.create_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("Output buffer"),
+                size: (type_size * m_size * k_size) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                mapped_at_creation: false,
+            }
         );
         //0-3
         
@@ -175,16 +142,13 @@ impl Pipeline {
         );
 
          Pipeline {
-            uniform_buffer,
-            matrix_a_buffer,
-            matrix_b_buffer,
             output_buffer,
             bind_group_0,
             compute_pipeline,
         }
     }
 
-    pub fn run(&self, anchor: &super::Device, encoder: &mut wgpu::CommandEncoder, m_size: usize, n_size: usize, k_size: usize,) {
+    pub fn run(&self, encoder: &mut wgpu::CommandEncoder, m_size: usize, _n_size: usize, k_size: usize,) {
         //Create compute pass
         let mut compute_pass = encoder.begin_compute_pass(
             &wgpu::ComputePassDescriptor {

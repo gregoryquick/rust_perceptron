@@ -13,11 +13,15 @@ impl Pipeline {
                                  n_size: usize,) -> Self {
         let type_size = std::mem::size_of::<T>();
         let device = &anchor.device;
-        //Create/load buffers
-        use wgpu::util::{BufferInitDescriptor, DeviceExt};
         
+        //Create/load buffers
+
         let uniform_buffer = buffers.0;
-        let matrix_buffer = buffers.1;        
+        //0-0
+        
+        let matrix_buffer = buffers.1;
+        //0-1
+        
         let output_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("Output buffer"),

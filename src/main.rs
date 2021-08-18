@@ -28,7 +28,7 @@ fn main() {
         }
         vector
     };
-    let label_data = {
+    let _label_data = {
         let mut vector: Vec<f32> = vec![0f32; 28*28 * batch_size];
         for (loc, data) in vector.iter_mut().zip(batch_labels.iter()) {
             *loc = **data;

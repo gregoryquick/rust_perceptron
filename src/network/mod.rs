@@ -11,8 +11,8 @@ pub mod denselayer;
 
 #[derive(Serialize, Deserialize)]
 pub struct NeuralNetwork {
-    sizes: Vec<usize>,
     layers: Vec<denselayer::Denselayer>,
+    output_size: usize,
 }
 
 impl NeuralNetwork {
@@ -40,12 +40,14 @@ impl NeuralNetwork {
                     }
                     vector
                 },
+                output_dimension: *output_size,
+                input_dimension: *input_size,
             });
         }
         
         NeuralNetwork {
-            sizes,
             layers,
+            output_size: *sizes.split_last().unwrap().0,
         }
     }
 
@@ -85,19 +87,13 @@ impl NeuralNetwork {
         );
 
         //Feed input through layers to get output
-        let layer_iterator = self.sizes.split_last().unwrap().1.iter()
-        .zip(self.sizes.split_first().unwrap().1)
-        .zip(self.layers.iter());
-
-        let output_buffer = layer_iterator.fold(input_buffer, |buffer, (topology, layer)| {
-            let (&input_size, &output_size) = topology;
-
+        let output_buffer = self.layers.iter().fold(input_buffer, |buffer, layer|{
+            let data = layer.load_to_gpu(&anchor);
             layer.forward::<T>(
-                buffer,
+                &buffer,
+                &data,
                 &anchor,
                 &mut encoder,
-                output_size,
-                input_size,
                 batch_size,
             )
         });
@@ -106,7 +102,7 @@ impl NeuralNetwork {
         let staging_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("Staging buffer"),
-                size: (type_size * self.sizes.split_last().unwrap().0 * batch_size) as wgpu::BufferAddress,
+                size: (type_size * self.output_size * batch_size) as wgpu::BufferAddress,
                 usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
                 mapped_at_creation: false,
             }
@@ -116,7 +112,7 @@ impl NeuralNetwork {
         encoder.copy_buffer_to_buffer(
             &output_buffer, 0,
             &staging_buffer, 0,
-            (type_size * self.sizes.split_last().unwrap().0 * batch_size) as wgpu::BufferAddress,
+            (type_size * self.output_size * batch_size) as wgpu::BufferAddress,
         );
 
         //Submit encoder
