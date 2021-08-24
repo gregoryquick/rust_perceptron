@@ -4,15 +4,27 @@ use rand::prelude::*;
 use futures::executor::block_on;
 use serde::{Serialize, Deserialize};
 use std::fs::File;
-use std::collections::VecDeque;
+//use std::collections::VecDeque;
 
 
 pub mod denselayer;
 
 #[derive(Serialize, Deserialize)]
 pub struct NeuralNetwork {
-    layers: Vec<denselayer::Denselayer>,
+    layers: Vec<denselayer::Denselayer::<f32>>,
+    //layers: Vec<Box<dyn NetworkLayer<f32>>>,
     output_size: usize,
+}
+
+pub trait NetworkLayer<T: bytemuck::Pod> {
+    fn load_to_gpu(&self, anchor: &pipelines::Device,) -> Vec<wgpu::Buffer>;
+    
+    fn forward(&self,
+               input: &wgpu::Buffer,
+               layer_data: &Vec<wgpu::Buffer>,
+               anchor: &pipelines::Device,
+               encoder: &mut wgpu::CommandEncoder,
+               batch_size: usize,) -> wgpu::Buffer;
 }
 
 impl NeuralNetwork {
@@ -21,28 +33,39 @@ impl NeuralNetwork {
         use rand::distributions::Uniform;
         let dist = Uniform::new(-1.0,1.0);
         
-        let mut layers = Vec::new();
+        //let mut layers: Vec<Box<dyn NetworkLayer<f32>>> = Vec::new();
+        let mut layers: Vec<denselayer::Denselayer::<f32>> = Vec::new();
 
         for (input_size, output_size) in 
         sizes.split_last().unwrap().1.iter().zip(sizes.split_first().unwrap().1) {
-            layers.push(denselayer::Denselayer{
-                weights:{
-                    let mut vector: Vec<f32> = vec![0f32; *input_size * *output_size];
-                    for num in vector.iter_mut() {
-                        *num = rng.sample(dist);
-                    }
-                    vector
-                },
-                biases:{
-                    let mut vector: Vec<f32> = vec![0f32; *output_size];
-                    for num in vector.iter_mut() {
-                        *num = rng.sample(dist);
-                    }
-                    vector
-                },
-                output_dimension: *output_size,
-                input_dimension: *input_size,
-            });
+            //layers.push(Box::new(
+            //        denselayer::Denselayer {
+            //            weights:{
+            //                let vector: Vec<f32> = (0..*input_size * *output_size).map(|_i| {rng.sample(dist)}).collect();
+            //                vector
+            //            },
+            //            biases:{
+            //                let vector: Vec<f32> = (0..*output_size).map(|_i| {rng.sample(dist)}).collect();
+            //                vector
+            //            },
+            //            output_dimension: *output_size,
+            //            input_dimension: *input_size,
+            //        }
+            //    )
+            //);
+            layers.push(denselayer::Denselayer {
+                    weights:{
+                        let vector: Vec<f32> = (0..*input_size * *output_size).map(|_i| {rng.sample(dist)}).collect();
+                        vector
+                    },
+                    biases:{
+                        let vector: Vec<f32> = (0..*output_size).map(|_i| {rng.sample(dist)}).collect();
+                        vector
+                    },
+                    output_dimension: *output_size,
+                    input_dimension: *input_size,
+                }
+            );
         }
         
         NeuralNetwork {
@@ -51,20 +74,30 @@ impl NeuralNetwork {
         }
     }
 
-    pub fn save(&self, filelocation: &str) {
+    pub fn save_to_file(&self, filelocation: &str) {
         let file = File::create(filelocation).unwrap();
         bincode::serialize_into(&file, &self).unwrap();
     }
 
-    pub fn load(filelocation: &str) -> Self {
+    pub fn load_from_file(filelocation: &str) -> Self {
         let file = File::open(filelocation).unwrap();
         let network: NeuralNetwork = bincode::deserialize_from(&file).unwrap();
         network
     }
+    
+    pub fn load_to_gpu(&self, anchor: &pipelines::Device,) -> Vec<Vec<wgpu::Buffer>> {
+        let mut vec: Vec<Vec<wgpu::Buffer>> = Vec::new();
+        for layer in &self.layers {
+            vec.push(layer.load_to_gpu(anchor));
+         }
+        vec
+    }
 
-    pub fn feedforward<T: bytemuck::Pod>(&self, input: &Vec<T>, batch_size: usize,) -> Option<Vec<T>> {
-        //Connect to device
-        let anchor = block_on(pipelines::Device::new());
+    pub fn feedforward<T: bytemuck::Pod>(&self,
+                                         input: &Vec<T>,
+                                         network_data: &Vec<Vec<wgpu::Buffer>>,
+                                         anchor: &pipelines::Device,
+                                         batch_size: usize,) -> Option<Vec<T>> {
         let queue = &anchor.queue;
         let device = &anchor.device;
         let type_size = std::mem::size_of::<T>();
@@ -87,11 +120,11 @@ impl NeuralNetwork {
         );
 
         //Feed input through layers to get output
-        let output_buffer = self.layers.iter().fold(input_buffer, |buffer, layer|{
-            let data = layer.load_to_gpu(&anchor);
-            layer.forward::<T>(
+        let layer_iterator = self.layers.iter().zip(network_data.iter());
+        let output_buffer = layer_iterator.fold(input_buffer, |buffer, (layer, layer_data)| {
+            layer.forward(
                 &buffer,
-                &data,
+                layer_data,
                 &anchor,
                 &mut encoder,
                 batch_size,

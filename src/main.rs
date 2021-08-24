@@ -3,6 +3,8 @@ mod pipelines;
 mod network;
 //mod optimisers;
 
+use futures::executor::block_on;
+
 fn main() {
     let batch_size: usize = 1;
     
@@ -15,10 +17,10 @@ fn main() {
     println!("Label:");
     println!("{:?}", batch_labels);
 
-    let topology: Vec<usize> = vec![28*28, 1024, 1024, 512, 32, 10];
-    let my_network = network::NeuralNetwork::new(topology);
-    my_network.save("weights/network.bin");
-    let mut my_network = network::NeuralNetwork::load("weights/network.bin");
+    //let topology: Vec<usize> = vec![28*28, 1024, 1024, 512, 32, 10];
+    //let my_network = network::NeuralNetwork::new(topology);
+    //my_network.save_to_file("weights/network.bin");
+    let mut my_network = network::NeuralNetwork::load_from_file("weights/network.bin");
 
     //Dereference data into vectors
     let input_data = {
@@ -36,10 +38,17 @@ fn main() {
         vector
     };
 
+    //Connect to device
+    let anchor = block_on(pipelines::Device::new());
+
+    //Load network to gpu
+    let network_data = my_network.load_to_gpu(&anchor);
+
+    //Run feedforward
     println!("Prediction 0:");
-    println!("{:?}", my_network.feedforward::<f32>(&input_data, batch_size).unwrap());
+    println!("{:?}", my_network.feedforward::<f32>(&input_data, &network_data, &anchor, batch_size).unwrap());
     println!("Prediction 1:");
-    println!("{:?}", my_network.feedforward::<f32>(&input_data, batch_size).unwrap());
+    println!("{:?}", my_network.feedforward::<f32>(&input_data, &network_data, &anchor, batch_size).unwrap());
 
 }
 

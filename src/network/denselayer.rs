@@ -1,20 +1,20 @@
 use crate::pipelines;
 
-use futures::executor::block_on;
 use serde::{Serialize, Deserialize};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
+//use futures::executor::block_on;
 
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Denselayer {
-    pub weights: Vec<f32>,
-    pub biases: Vec<f32>,
+pub struct Denselayer<T: bytemuck::Pod> {
+    pub weights: Vec<T>,
+    pub biases: Vec<T>,
     pub output_dimension: usize,
     pub input_dimension: usize,
 }
 
-impl Denselayer {
-    pub fn load_to_gpu(&self, anchor: &pipelines::Device,) -> Vec<wgpu::Buffer> {
+impl<T: bytemuck::Pod> super::NetworkLayer<T> for Denselayer<T> {
+    fn load_to_gpu(&self, anchor: &pipelines::Device,) -> Vec<wgpu::Buffer> {
         let device = &anchor.device;
         let mut vec: Vec<wgpu::Buffer> = Vec::with_capacity(2);
         
@@ -39,12 +39,12 @@ impl Denselayer {
         return vec;
     }
 
-    pub fn forward<T: bytemuck::Pod>(&self, 
-                                     input: &wgpu::Buffer,
-                                     layer_data: &Vec<wgpu::Buffer>,
-                                     anchor: &pipelines::Device,
-                                     encoder: &mut wgpu::CommandEncoder,
-                                     batch_size: usize,) -> wgpu::Buffer {
+    fn forward(&self, 
+               input: &wgpu::Buffer,
+               layer_data: &Vec<wgpu::Buffer>,
+               anchor: &pipelines::Device,
+               encoder: &mut wgpu::CommandEncoder,
+               batch_size: usize,) -> wgpu::Buffer {
         let device = &anchor.device;
         
         let mut gpu_data = layer_data.iter();
