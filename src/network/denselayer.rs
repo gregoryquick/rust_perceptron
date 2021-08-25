@@ -6,14 +6,15 @@ use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Denselayer<T: bytemuck::Pod> {
-    pub weights: Vec<T>,
-    pub biases: Vec<T>,
+pub struct Denselayer {
+    pub weights: Vec<f32>,
+    pub biases: Vec<f32>,
     pub output_dimension: usize,
     pub input_dimension: usize,
 }
 
-impl<T: bytemuck::Pod> super::NetworkLayer<T> for Denselayer<T> {
+#[typetag::serde]
+impl super::NetworkLayer for Denselayer {
     fn load_to_gpu(&self, anchor: &pipelines::Device,) -> Vec<wgpu::Buffer> {
         let device = &anchor.device;
         let mut vec: Vec<wgpu::Buffer> = Vec::with_capacity(2);
@@ -63,7 +64,7 @@ impl<T: bytemuck::Pod> super::NetworkLayer<T> for Denselayer<T> {
             )
         };
 
-        let weight_pipeline = pipelines::matrixmultiply::Pipeline::new::<T>(anchor, (
+        let weight_pipeline = pipelines::matrixmultiply::Pipeline::new::<f32>(anchor, (
                 &weight_uniforms,
                 layer_weights,
                 input,
@@ -88,7 +89,7 @@ impl<T: bytemuck::Pod> super::NetworkLayer<T> for Denselayer<T> {
             )
         };
         
-        let bias_pipeline = pipelines::addvectortobatch::Pipeline::new::<T>(anchor, (
+        let bias_pipeline = pipelines::addvectortobatch::Pipeline::new::<f32>(anchor, (
                 &bias_uniforms,
                 &weight_pipeline.output_buffer,
                 layer_biases,
@@ -101,7 +102,7 @@ impl<T: bytemuck::Pod> super::NetworkLayer<T> for Denselayer<T> {
         bias_pipeline.run(encoder, self.output_dimension, batch_size);
 
         //Create activation pipeline
-        let activation_pipeline = pipelines::leakyrelu::Pipeline::new::<T>(anchor, (
+        let activation_pipeline = pipelines::leakyrelu::Pipeline::new::<f32>(anchor, (
                 &bias_uniforms,
                 &bias_pipeline.output_buffer,
             ),

@@ -11,12 +11,12 @@ pub mod denselayer;
 
 #[derive(Serialize, Deserialize)]
 pub struct NeuralNetwork {
-    layers: Vec<denselayer::Denselayer::<f32>>,
-    //layers: Vec<Box<dyn NetworkLayer<f32>>>,
+    layers: Vec<Box<dyn NetworkLayer>>,
     output_size: usize,
 }
 
-pub trait NetworkLayer<T: bytemuck::Pod> {
+#[typetag::serde(tag = "type")]
+pub trait NetworkLayer {
     fn load_to_gpu(&self, anchor: &pipelines::Device,) -> Vec<wgpu::Buffer>;
     
     fn forward(&self,
@@ -33,38 +33,24 @@ impl NeuralNetwork {
         use rand::distributions::Uniform;
         let dist = Uniform::new(-1.0,1.0);
         
-        //let mut layers: Vec<Box<dyn NetworkLayer<f32>>> = Vec::new();
-        let mut layers: Vec<denselayer::Denselayer::<f32>> = Vec::new();
+        let mut layers: Vec<Box<dyn NetworkLayer>> = Vec::new();
 
         for (input_size, output_size) in 
         sizes.split_last().unwrap().1.iter().zip(sizes.split_first().unwrap().1) {
-            //layers.push(Box::new(
-            //        denselayer::Denselayer {
-            //            weights:{
-            //                let vector: Vec<f32> = (0..*input_size * *output_size).map(|_i| {rng.sample(dist)}).collect();
-            //                vector
-            //            },
-            //            biases:{
-            //                let vector: Vec<f32> = (0..*output_size).map(|_i| {rng.sample(dist)}).collect();
-            //                vector
-            //            },
-            //            output_dimension: *output_size,
-            //            input_dimension: *input_size,
-            //        }
-            //    )
-            //);
-            layers.push(denselayer::Denselayer {
-                    weights:{
-                        let vector: Vec<f32> = (0..*input_size * *output_size).map(|_i| {rng.sample(dist)}).collect();
-                        vector
-                    },
-                    biases:{
-                        let vector: Vec<f32> = (0..*output_size).map(|_i| {rng.sample(dist)}).collect();
-                        vector
-                    },
-                    output_dimension: *output_size,
-                    input_dimension: *input_size,
-                }
+            layers.push(Box::new(
+                    denselayer::Denselayer {
+                        weights:{
+                            let vector: Vec<f32> = (0..*input_size * *output_size).map(|_i| {rng.sample(dist)}).collect();
+                            vector
+                        },
+                        biases:{
+                            let vector: Vec<f32> = (0..*output_size).map(|_i| {rng.sample(dist)}).collect();
+                            vector
+                        },
+                        output_dimension: *output_size,
+                        input_dimension: *input_size,
+                    }
+                )
             );
         }
         
