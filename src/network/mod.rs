@@ -7,7 +7,8 @@ use std::fs::File;
 //use std::collections::VecDeque;
 
 
-pub mod denselayer;
+mod denselayer;
+mod batchnorm;
 
 #[derive(Serialize, Deserialize)]
 pub struct NeuralNetwork {
@@ -49,6 +50,20 @@ impl NeuralNetwork {
                         },
                         output_dimension: *output_size,
                         input_dimension: *input_size,
+                    }
+                )
+            );
+            layers.push(Box::new(
+                    batchnorm::Batchnorm {
+                        gamma:{
+                            let vector: Vec<f32> = (0..*output_size).map(|_i| {rng.sample(dist)}).collect();
+                            vector
+                        },
+                        beta:{
+                            let vector: Vec<f32> = (0..*output_size).map(|_i| {rng.sample(dist)}).collect();
+                            vector
+                        },
+                        dimension: *output_size,
                     }
                 )
             );

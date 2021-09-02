@@ -1,4 +1,7 @@
 pub mod addvectortobatch;
+pub mod batchmean;
+pub mod batchnorm;
+pub mod batchvar;
 //pub mod elementmultiply;
 //pub mod elementsubtract;
 pub mod leakyrelu;
