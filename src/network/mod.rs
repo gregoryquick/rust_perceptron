@@ -26,6 +26,13 @@ pub trait NetworkLayer {
                anchor: &pipelines::Device,
                encoder: &mut wgpu::CommandEncoder,
                batch_size: usize,) -> wgpu::Buffer;
+
+    fn forward_for_backprop(&self,
+               input: &wgpu::Buffer,
+               layer_data: &mut Vec<wgpu::Buffer>,
+               anchor: &pipelines::Device,
+               encoder: &mut wgpu::CommandEncoder,
+               batch_size: usize,) -> Vec<wgpu::Buffer>;
 }
 
 impl NeuralNetwork {
@@ -44,10 +51,6 @@ impl NeuralNetwork {
                             let vector: Vec<f32> = (0..*input_size * *output_size).map(|_i| {rng.sample(dist)}).collect();
                             vector
                         },
-                        biases:{
-                            let vector: Vec<f32> = (0..*output_size).map(|_i| {rng.sample(dist)}).collect();
-                            vector
-                        },
                         output_dimension: *output_size,
                         input_dimension: *input_size,
                     }
@@ -63,6 +66,15 @@ impl NeuralNetwork {
                             let vector: Vec<f32> = (0..*output_size).map(|_i| {rng.sample(dist)}).collect();
                             vector
                         },
+                        data_var:{
+                            let vector: Vec<f32> = (0..*output_size).map(|_i| {0.0}).collect();
+                            vector
+                        },
+                        data_mean:{
+                            let vector: Vec<f32> = (0..*output_size).map(|_i| {1.0}).collect();
+                            vector
+                        },
+                        batches_sampled: 0,
                         dimension: *output_size,
                     }
                 )
@@ -116,12 +128,12 @@ impl NeuralNetwork {
         //Create command buffer encoder
         let mut encoder = device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor {
-                label: None 
+                label: None,
             }
         );
 
         //Feed input through layers to get output
-        let layer_iterator = self.layers.iter().zip(network_data.iter());
+        let layer_iterator = self.layers.iter().zip(network_data.into_iter());
         let output_buffer = layer_iterator.fold(input_buffer, |buffer, (layer, layer_data)| {
             layer.forward(
                 &buffer,
@@ -145,6 +157,93 @@ impl NeuralNetwork {
         //Copy out of gpu
         encoder.copy_buffer_to_buffer(
             &output_buffer, 0,
+            &staging_buffer, 0,
+            (type_size * self.output_size * batch_size) as wgpu::BufferAddress,
+        );
+
+        //Submit encoder
+        queue.submit(Some(encoder.finish()));
+
+        //Create future of the computation
+        let buffer_slice = staging_buffer.slice(..);
+        let buffer_future = buffer_slice.map_async(wgpu::MapMode::Read);
+        
+        //Wait for computation to complete
+        device.poll(wgpu::Maintain::Wait);
+
+        block_on(async {
+            match buffer_future.await {
+                Ok(()) => {
+                    //Get buffer contents
+                    let data = buffer_slice.get_mapped_range();
+                    //Convert to T
+                    let result: Vec<T> = data.chunks_exact(type_size).map(|b| *bytemuck::from_bytes::<T>(b)).collect();
+                     //Drop mapped view
+                    drop(data);
+                    //Unmap buffer
+                    staging_buffer.unmap();
+
+                    return Some(result)
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    None
+                }
+            }
+        })
+    }
+
+    pub fn forward_for_backprop<T: bytemuck::Pod>(&self,
+                                                  input: &Vec<T>,
+                                                  network_data: &mut Vec<Vec<wgpu::Buffer>>,
+                                                  anchor: &pipelines::Device,
+                                                  batch_size: usize,) -> Option<Vec<T>> {
+        let queue = &anchor.queue;
+        let device = &anchor.device;
+        let type_size = std::mem::size_of::<T>();
+
+        //Load input to gpu
+        use wgpu::util::{BufferInitDescriptor, DeviceExt};
+        let input_buffer = device.create_buffer_init(
+            &BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(&input[..]),
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+            }
+        );
+
+        //Create command buffer encoder
+        let mut encoder = device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor {
+                label: None,
+            }
+        );
+
+        //Feed input through layers to get output
+        let layer_iterator = self.layers.iter().zip(network_data.into_iter());
+        let output_buffer = layer_iterator.fold(vec![input_buffer], |buffer, (layer, layer_data)| {
+            layer.forward_for_backprop(
+                buffer.first().unwrap(),
+                layer_data,
+                &anchor,
+                &mut encoder,
+                batch_size,
+            )
+        });
+
+        //Create staging buffer for loading out of gpu
+        let staging_buffer = device.create_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("Staging buffer"),
+                size: (type_size * self.output_size * batch_size) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
+                mapped_at_creation: false,
+            }
+        );
+
+        //Copy out of gpu
+        encoder.copy_buffer_to_buffer(
+            output_buffer.first().unwrap(), 0,
             &staging_buffer, 0,
             (type_size * self.output_size * batch_size) as wgpu::BufferAddress,
         );

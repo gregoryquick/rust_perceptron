@@ -24,7 +24,8 @@ float get_element(uint index_of_row) {
         float difference = matrix[index_of_column * max_row_index + index_of_row] - vector[index_of_row];
         accumulator += difference * difference;
     }
-    return accumulator/float(max_column_index - 1);
+    //Would rather have nice behavior than unbiased estimator.
+    return accumulator/float(max_column_index);
 }
 
 void main() {

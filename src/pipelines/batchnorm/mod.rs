@@ -92,7 +92,7 @@ impl Pipeline {
                     visibility: wgpu::ShaderStage::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage {
-                            read_only: false,
+                            read_only: true,
                         },
                         has_dynamic_offset: false,
                         min_binding_size: wgpu::BufferSize::new(0),
@@ -132,7 +132,7 @@ impl Pipeline {
                     visibility: wgpu::ShaderStage::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage {
-                            read_only: false,
+                            read_only: true,
                         },
                         has_dynamic_offset: false,
                         min_binding_size: wgpu::BufferSize::new(0),
@@ -144,7 +144,7 @@ impl Pipeline {
                     visibility: wgpu::ShaderStage::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage {
-                            read_only: false,
+                            read_only: true,
                         },
                         has_dynamic_offset: false,
                         min_binding_size: wgpu::BufferSize::new(0),
@@ -199,7 +199,7 @@ impl Pipeline {
         let pipeline_layout = device.create_pipeline_layout(
             &wgpu::PipelineLayoutDescriptor {
                 label: None,
-                bind_group_layouts: &[&bind_group_layout_0,&bind_group_layout_1],
+                bind_group_layouts: &[&bind_group_layout_0, &bind_group_layout_1],
                 push_constant_ranges: &[],
             }
         );

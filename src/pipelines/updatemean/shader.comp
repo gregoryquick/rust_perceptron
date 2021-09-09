@@ -1,0 +1,34 @@
+#version 450
+layout(set = 0, binding = 0) uniform UniformBuffer {
+    uint max_row_index;
+};
+
+layout(set = 0, binding = 1) buffer Agregate {
+    float[] agregate;
+};
+
+layout(set = 0, binding = 2) buffer Mean {
+    float[] mean;
+};
+
+layout(set = 0, binding = 3) buffer Sample {
+    uint samples;
+};
+
+
+layout(set = 0, binding = 4) buffer Target {
+    float[] target;
+};
+
+float get_element(uint index_of_row) {
+    //Agregate: row_size
+    //Mean:     row_size
+    float share = 1.0/float(samples);
+    return (1.0-share)*agregate[index_of_row] + share*mean[index_of_row];
+}
+
+void main() {
+    uint index_of_row = gl_GlobalInvocationID.x;
+    target[index_of_row] = get_element(index_of_row);
+    //target: row_size
+}

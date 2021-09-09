@@ -5,13 +5,14 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    //Take an m x n matrix an and m-length vector of means along n to get m-length vector of variances along n
+    //Take an m-length vector of agregate means, an m-length vector of new sample means
+    //and the sample number to calcute new agregate means
     pub fn new<T: bytemuck::Pod>(anchor: &super::Device,
                                  buffers: (&wgpu::Buffer, // uniform buffer
-                                           &wgpu::Buffer, // m x n matrix
-                                           &wgpu::Buffer),// m-length vector
-                                 m_size: usize,
-                                 _n_size: usize,) -> Self {
+                                           &wgpu::Buffer, //m-length vector
+                                           &wgpu::Buffer, //m-length vector
+                                           &wgpu::Buffer),//   unsigned int
+                                 m_size: usize,) -> Self {
         let type_size = std::mem::size_of::<T>();
         let device = &anchor.device;
         
@@ -20,11 +21,14 @@ impl Pipeline {
         let uniform_buffer = buffers.0;
         //0-0
         
-        let matrix_buffer = buffers.1;
+        let agregate_buffer = buffers.1;
         //0-1
-        
-        let vector_buffer = buffers.2;
+
+        let mean_buffer = buffers.2;
         //0-2
+        //
+        let sample_number = buffers.3;
+        //0-3
         
         let output_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -34,12 +38,12 @@ impl Pipeline {
                 mapped_at_creation: false,
             }
         );
-        //0-3
+        //0-4
         
         //Create bind group(s)
         let bind_group_layout_0 = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
-                label: Some("Batch Var bind group layout 0"),
+                label: Some("Update Mean bind group layout 0"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::COMPUTE,
@@ -79,6 +83,18 @@ impl Pipeline {
                     visibility: wgpu::ShaderStage::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage {
+                            read_only: true,
+                        },
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(0),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStage::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage {
                             read_only: false,
                         },
                         has_dynamic_offset: false,
@@ -90,7 +106,7 @@ impl Pipeline {
         );
         let bind_group_0 = device.create_bind_group(
             &wgpu::BindGroupDescriptor {
-                label:  Some("Batch Var bind group 0"),
+                label:  Some("Update Mean bind group 0"),
                 layout: &bind_group_layout_0,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
@@ -98,14 +114,18 @@ impl Pipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: matrix_buffer.as_entire_binding(),
+                    resource: agregate_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: vector_buffer.as_entire_binding(),
+                    resource: mean_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
+                    resource: sample_number.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
                     resource: output_buffer.as_entire_binding(),
                 },],
             }
@@ -114,7 +134,7 @@ impl Pipeline {
         //Create compute pipeline
         let cs_src = include_str!("shader.comp");
         let mut compiler = shaderc::Compiler::new().unwrap();
-        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "batchvar.comp", "main", None).unwrap();
+        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "updatemean.comp", "main", None).unwrap();
         let cs_module = device.create_shader_module(
             &wgpu::ShaderModuleDescriptor {
                 label: None,
@@ -133,7 +153,7 @@ impl Pipeline {
 
         let compute_pipeline = device.create_compute_pipeline(
             &wgpu::ComputePipelineDescriptor {
-                label: Some("Batch Var pipeline"),
+                label: Some("Update Mean pipeline"),
                 layout: Some(&pipeline_layout),
                 module: &cs_module,
                 entry_point: "main",
@@ -147,11 +167,11 @@ impl Pipeline {
         }
     }
 
-    pub fn run(&self, encoder: &mut wgpu::CommandEncoder, m_size: usize, _n_size: usize,) {
+    pub fn run(&self, encoder: &mut wgpu::CommandEncoder, m_size: usize,) {
         //Create compute pass
         let mut compute_pass = encoder.begin_compute_pass(
             &wgpu::ComputePassDescriptor {
-                label: Some("Batch Var"),
+                label: Some("Update Mean"),
             }
         );
 

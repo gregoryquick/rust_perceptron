@@ -10,7 +10,7 @@ impl Pipeline {
                                  buffers: (&wgpu::Buffer, // uniform buffer
                                            &wgpu::Buffer),// m x n matrix
                                  m_size: usize,
-                                 n_size: usize,) -> Self {
+                                 _n_size: usize,) -> Self {
         let type_size = std::mem::size_of::<T>();
         let device = &anchor.device;
         
@@ -25,7 +25,7 @@ impl Pipeline {
         let output_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("Output buffer"),
-                size: (type_size * m_size * n_size) as wgpu::BufferAddress,
+                size: (type_size * m_size) as wgpu::BufferAddress,
                 usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
                 mapped_at_creation: false,
             }

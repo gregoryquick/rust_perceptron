@@ -17,7 +17,7 @@ fn main() {
     println!("Label:");
     println!("{:?}", batch_labels);
 
-    let topology: Vec<usize> = vec![28*28, 1024, 1024, 512, 32, 10];
+    let topology: Vec<usize> = vec![28*28, 1024, 32, 512, 10];
     let my_network = network::NeuralNetwork::new(topology);
     my_network.save_to_file("weights/network.bin");
     let my_network = network::NeuralNetwork::load_from_file("weights/network.bin");
@@ -42,13 +42,16 @@ fn main() {
     let anchor = block_on(pipelines::Device::new());
 
     //Load network to gpu
-    let network_data = my_network.load_to_gpu(&anchor);
+    let mut network_data = my_network.load_to_gpu(&anchor);
 
     //Run feedforward
     println!("Prediction 0:");
-    println!("{:?}", my_network.feedforward::<f32>(&input_data, &network_data, &anchor, batch_size).unwrap());
+    println!("{:?}", my_network.forward_for_backprop::<f32>(&input_data, &mut network_data, &anchor, batch_size).unwrap());
     println!("Prediction 1:");
     println!("{:?}", my_network.feedforward::<f32>(&input_data, &network_data, &anchor, batch_size).unwrap());
-
+    println!("Prediction 2:");
+    println!("{:?}", my_network.forward_for_backprop::<f32>(&input_data, &mut network_data, &anchor, batch_size).unwrap());
+    println!("Prediction 3:");
+    println!("{:?}", my_network.feedforward::<f32>(&input_data, &network_data, &anchor, batch_size).unwrap());
 }
 
