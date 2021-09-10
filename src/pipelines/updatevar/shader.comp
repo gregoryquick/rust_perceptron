@@ -38,7 +38,7 @@ float get_element(uint index_of_row) {
     float squaremean = mean[index_of_row] * mean[index_of_row];
     float squareagregatemean = agregate_mean[index_of_row] * agregate_mean[index_of_row];
     float meanagregatemean = agregate_mean[index_of_row] * mean[index_of_row];
-    float contribution = (1.0 + share)*squaremean + varience[index_of_row] + agregate_share*(squareagregatemean + meanagregatemean);
+    float contribution = varience[index_of_row] + agregate_share*(squaremean + squareagregatemean - 2.0*meanagregatemean);
     //This is once again a biased estimator, but the sample number
     // would be much higher if I used total items intead of batches
     // to handle it properly and it should be good enough

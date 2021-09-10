@@ -6,7 +6,6 @@ use serde::{Serialize, Deserialize};
 use std::fs::File;
 //use std::collections::VecDeque;
 
-
 mod denselayer;
 mod batchnorm;
 
