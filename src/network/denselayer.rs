@@ -2,7 +2,7 @@ use crate::pipelines;
 
 use serde::{Serialize, Deserialize};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
-//use futures::executor::block_on;
+use futures::executor::block_on;
 
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -28,6 +28,69 @@ impl super::NetworkLayer for Denselayer {
         vec.push(layer_weights);
         
         return vec;
+    }
+
+    fn save_from_gpu(&mut self, anchor: &pipelines::Device, data: &Vec<wgpu::Buffer>) {
+        let queue = &anchor.queue;
+        let device = &anchor.device;
+        let type_size = std::mem::size_of::<f32>();
+
+        let mut gpu_data = data.into_iter();
+        let layer_weights = gpu_data.next().unwrap();
+
+        //Create command buffer encoder
+        let mut encoder = device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor {
+                label: None,
+            }
+        );
+
+        //Copy to readable buffer
+        let layer_weight_buffer = device.create_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("Staging buffer"),
+                size: (type_size * self.output_dimension *  self.input_dimension) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
+                mapped_at_creation: false,
+            }
+        );
+        encoder.copy_buffer_to_buffer(
+            layer_weights, 0,
+            &layer_weight_buffer, 0,
+            (type_size * self.output_dimension *  self.input_dimension) as wgpu::BufferAddress,
+        );
+
+        //Submit commands to gpu
+        queue.submit(Some(encoder.finish()));
+
+        //Create future of the computation
+        let layer_weight_slice = layer_weight_buffer.slice(..);
+        let layer_weight_future = layer_weight_slice.map_async(wgpu::MapMode::Read);
+        
+        //Register mapping callbacks
+        device.poll(wgpu::Maintain::Wait);
+
+        //Read from gpu
+        block_on(async {
+            match layer_weight_future.await {
+                Ok(()) => {
+                    //Get buffer contents
+                    let data = layer_weight_slice.get_mapped_range();
+                    //Convert to f32
+                    let result: Vec<f32> = data.chunks_exact(type_size).map(|b| *bytemuck::from_bytes::<f32>(b)).collect();
+                     //Drop mapped view
+                    drop(data);
+                    //Unmap buffer
+                    layer_weight_buffer.unmap();
+
+                    //Save data
+                    self.weights = result;
+                }
+                Err(e) => {
+                    eprintln!("Failed to save layer_weights to cpu: {}", e);
+                }
+            }
+        });
     }
 
     fn forward(&self, 

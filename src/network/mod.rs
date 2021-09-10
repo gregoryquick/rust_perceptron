@@ -18,6 +18,8 @@ pub struct NeuralNetwork {
 #[typetag::serde(tag = "type")]
 pub trait NetworkLayer {
     fn load_to_gpu(&self, anchor: &pipelines::Device,) -> Vec<wgpu::Buffer>;
+
+    fn save_from_gpu(&mut self, anchor: &pipelines::Device, data: &Vec<wgpu::Buffer>);
     
     fn forward(&self,
                input: &wgpu::Buffer,
@@ -105,6 +107,13 @@ impl NeuralNetwork {
         vec
     }
 
+    pub fn save_from_gpu(&mut self, anchor: &pipelines::Device, data: &Vec<Vec<wgpu::Buffer>>) {
+        let iter = self.layers.iter_mut().zip(data.into_iter());
+        for (layer, layer_data) in iter {
+            layer.save_from_gpu(anchor,layer_data);
+        }
+    }
+
     pub fn feedforward<T: bytemuck::Pod>(&self,
                                          input: &Vec<T>,
                                          network_data: &Vec<Vec<wgpu::Buffer>>,
@@ -167,9 +176,10 @@ impl NeuralNetwork {
         let buffer_slice = staging_buffer.slice(..);
         let buffer_future = buffer_slice.map_async(wgpu::MapMode::Read);
         
-        //Wait for computation to complete
+        //Register mapping callbacks
         device.poll(wgpu::Maintain::Wait);
 
+        //Wait for computation to complete
         block_on(async {
             match buffer_future.await {
                 Ok(()) => {
