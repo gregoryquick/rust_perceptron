@@ -1,19 +1,20 @@
-//pub mod addvectortobatch;
+pub mod addvectortobatch;
 pub mod batchmean;
 pub mod batchnorm;
+pub mod batchnormprime;
 pub mod batchvar;
-//pub mod elementmultiply;
+pub mod elementmultiply;
 //pub mod elementsubtract;
 pub mod leakyrelu;
-//pub mod leakyreluprime;
+pub mod leakyreluprime;
 pub mod matrixmultiply;
-//pub mod multiplybytranspose;
-//pub mod multiplytransposewith;
+pub mod multiplybytranspose;
+pub mod multiplytransposewith;
 //pub mod scalarmultiply;
+pub mod scalebatchwithvector;
 pub mod updatemean;
 pub mod updatesample;
 pub mod updatevar;
-
 
 pub struct Device {
     pub _adapter: wgpu::Adapter,

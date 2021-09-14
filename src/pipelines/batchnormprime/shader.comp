@@ -4,29 +4,24 @@ layout(set = 0, binding = 0) uniform UniformBuffer {
     uint max_column_index;
 };
 
-layout(set = 0, binding = 1) buffer Matrix {
-    float[] matrix;
+layout(set = 0, binding = 1) buffer Gamma {
+    float[] gamma;
 };
 
-layout(set = 0, binding = 2) buffer BatchMean {
-    float[] batchmean;
-};
-
-layout(set = 0, binding = 3) buffer BatchVar {
+layout(set = 0, binding = 2) buffer BatchVar {
     float[] batchvar;
 };
 
-layout(set = 1, binding = 0) buffer Target {
+layout(set = 0, binding = 3) buffer Target {
     float[] target;
 };
 
 float epsilon = 0.00000001;
 
 float get_element(uint index_of_row, uint index_of_column) {
-    //Matrix: row_size x column_size
+    //Gamma: row_size
     //BatchMean: row_size
-    float x = matrix[index_of_column * max_row_index + index_of_row] - batchmean[index_of_row];
-    return x/sqrt(batchvar[index_of_row] + epsilon); 
+    return gamma[index_of_row]/sqrt(batchvar[index_of_row] + epsilon); 
 }
 
 void main() {

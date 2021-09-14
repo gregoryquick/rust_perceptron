@@ -19,7 +19,7 @@ pub struct Batchnorm {
 impl super::NetworkLayer for Batchnorm {
     fn load_to_gpu(&self, anchor: &pipelines::Device,) -> Vec<wgpu::Buffer> {
         let device = &anchor.device;
-        let mut vec: Vec<wgpu::Buffer> = Vec::with_capacity(2);
+        let mut vec: Vec<wgpu::Buffer> = Vec::with_capacity(5);
         
         let layer_gamma: wgpu::Buffer = device.create_buffer_init(
             &BufferInitDescriptor {
@@ -321,8 +321,6 @@ impl super::NetworkLayer for Batchnorm {
                 input,
                 data_mean,
                 data_var,
-                layer_beta,
-                layer_gamma,
             ),
             self.dimension,
             batch_size,
@@ -331,8 +329,34 @@ impl super::NetworkLayer for Batchnorm {
         //Run normalization pipeline
         normalization_pipeline.run(encoder, self.dimension, batch_size);
 
+        //Create scale pipeline
+        let scale_pipeline = pipelines::scalebatchwithvector::Pipeline::new::<f32>(anchor, (
+                &normalization_uniforms,
+                &normalization_pipeline.output_buffer,
+                layer_gamma,
+            ),
+            self.dimension,
+            batch_size,
+        );
+
+        //Run scale pipeline
+        scale_pipeline.run(encoder, self.dimension, batch_size);
+
+        //Create bias pipeline
+        let bias_pipeline = pipelines::addvectortobatch::Pipeline::new::<f32>(anchor, (
+                &normalization_uniforms,
+                &scale_pipeline.output_buffer,
+                layer_beta,
+            ),
+            self.dimension,
+            batch_size,
+        );
+
+        //Run bias pipeline
+        bias_pipeline.run(encoder, self.dimension, batch_size);
+
         //Return
-        normalization_pipeline.output_buffer
+        bias_pipeline.output_buffer
     }
 
     fn forward_for_backprop(&self, 
@@ -340,7 +364,7 @@ impl super::NetworkLayer for Batchnorm {
                layer_data: &mut Vec<wgpu::Buffer>,
                anchor: &pipelines::Device,
                encoder: &mut wgpu::CommandEncoder,
-               batch_size: usize,) -> Vec<wgpu::Buffer> {
+               batch_size: usize,) -> (wgpu::Buffer, Vec<wgpu::Buffer>) {
         let device = &anchor.device;
         
         let mut gpu_data = layer_data.into_iter();
@@ -437,8 +461,6 @@ impl super::NetworkLayer for Batchnorm {
                 input,
                 &mean_update_pipeline.output_buffer,
                 &var_update_pipeline.output_buffer,
-                layer_beta,
-                layer_gamma,
             ),
             self.dimension,
             batch_size,
@@ -447,18 +469,106 @@ impl super::NetworkLayer for Batchnorm {
         //Run normalization pipeline
         normalization_pipeline.run(encoder, self.dimension, batch_size);
 
-        //Create vec for return
-        let mut vec: Vec<wgpu::Buffer> = Vec::with_capacity(1);
-        vec.push(normalization_pipeline.output_buffer);
+        //Create batchnormprime pipeline
+        let batchnormprime_pipeline = pipelines::batchnormprime::Pipeline::new::<f32>(anchor, (
+                &mean_uniforms,
+                layer_gamma,
+                data_var,
+            ),
+            self.dimension,
+            batch_size,
+        );
 
+        //Run batchnormprime pipeline
+        batchnormprime_pipeline.run(encoder, self.dimension, batch_size);
+        
+        //Create scale pipeline
+        let scale_pipeline = pipelines::scalebatchwithvector::Pipeline::new::<f32>(anchor, (
+                &mean_uniforms,
+                &normalization_pipeline.output_buffer,
+                layer_gamma,
+            ),
+            self.dimension,
+            batch_size,
+        );
+
+        //Run scale pipeline
+        scale_pipeline.run(encoder, self.dimension, batch_size);
+
+        //Create bias pipeline
+        let bias_pipeline = pipelines::addvectortobatch::Pipeline::new::<f32>(anchor, (
+                &mean_uniforms,
+                &scale_pipeline.output_buffer,
+                layer_beta,
+            ),
+            self.dimension,
+            batch_size,
+        );
+
+        //Run bias pipeline
+        bias_pipeline.run(encoder, self.dimension, batch_size);
+
+        //Create vec for return
+        let mut vec: Vec<wgpu::Buffer> = Vec::with_capacity(3);
+        vec.push(normalization_pipeline.output_buffer);
+        vec.push(batchnormprime_pipeline.output_buffer);
+        
         //Update mutable values
         *data_mean = mean_update_pipeline.output_buffer;
         *data_var = var_update_pipeline.output_buffer;
         *batches_sampled = sample_update_pipeline.output_buffer;
         
         //Return
-        vec
+        (bias_pipeline.output_buffer, vec)
     }
 
-}
+    fn backprop(&self,
+                backprop_grad: &wgpu::Buffer,
+                layer_data: &Vec<wgpu::Buffer>, 
+                backprop_data: &Vec<wgpu::Buffer>,
+                anchor: &pipelines::Device,
+                encoder: &mut wgpu::CommandEncoder,
+                batch_size: usize,) -> (wgpu::Buffer, Vec<Option<wgpu::Buffer>>) {
+        let device = &anchor.device;
+        
+        let mut gpu_data = layer_data.into_iter();
+        let layer_gamma = gpu_data.next().unwrap();
+        let layer_beta = gpu_data.next().unwrap();
+        let data_var =  gpu_data.next().unwrap();
+        let data_mean = gpu_data.next().unwrap();
+        let batches_sampled = gpu_data.next().unwrap();
 
+        let mut gpu_data = backprop_data.into_iter();
+        let layer_normed = gpu_data.next().unwrap();
+        let layer_normprime = gpu_data.next().unwrap();
+        let layer_input = gpu_data.next().unwrap();
+
+        //Create input_grad pipeline
+        let input_grad_uniforms = {
+            let uniform_data = [self.dimension as u32, batch_size as u32];
+            device.create_buffer_init(
+                &BufferInitDescriptor {
+                    label: Some("Uniform Buffer"),
+                    contents: bytemuck::bytes_of(&uniform_data),
+                    usage: wgpu::BufferUsage::UNIFORM,
+                }
+            )
+        };
+
+        let input_grad_pipeline = pipelines::elementmultiply::Pipeline::new::<f32>(anchor, (
+                &input_grad_uniforms,
+                layer_normprime,
+                backprop_grad,
+            ),
+            self.dimension,
+            batch_size,
+        );
+
+        //Run input_grad pipeline
+        input_grad_pipeline.run(encoder, self.dimension, batch_size);
+
+        //Return
+        let mut vec: Vec<Option<wgpu::Buffer>> = Vec::with_capacity(5);
+        (input_grad_pipeline.output_buffer, vec)
+    }
+}

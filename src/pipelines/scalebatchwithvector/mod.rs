@@ -5,7 +5,7 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    //Take an m-length vector and add it across n to an m x n matrix
+    //Take an m-length vector and multiply it across n to an m x n matrix
     pub fn new<T: bytemuck::Pod>(anchor: &super::Device,
                                  buffers: (&wgpu::Buffer, // uniform buffer
                                            &wgpu::Buffer, // m x n matrix
@@ -39,7 +39,7 @@ impl Pipeline {
         //Create bind group(s)
         let bind_group_layout_0 = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
-                label: Some("Batch Add Vector bind group layout 0"),
+                label: Some("Batch Multiply Vector bind group layout 0"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::COMPUTE,
@@ -90,7 +90,7 @@ impl Pipeline {
         );
         let bind_group_0 = device.create_bind_group(
             &wgpu::BindGroupDescriptor {
-                label:  Some("Batch Add Vector bind group 0"),
+                label:  Some("Batch Multiply Vector bind group 0"),
                 layout: &bind_group_layout_0,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
@@ -114,7 +114,7 @@ impl Pipeline {
         //Create compute pipeline
         let cs_src = include_str!("shader.comp");
         let mut compiler = shaderc::Compiler::new().unwrap();
-        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "addvectortobatch.comp", "main", None).unwrap();
+        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "scalebatchwithvector.comp", "main", None).unwrap();
         let cs_module = device.create_shader_module(
             &wgpu::ShaderModuleDescriptor {
                 label: None,
@@ -133,7 +133,7 @@ impl Pipeline {
 
         let compute_pipeline = device.create_compute_pipeline(
             &wgpu::ComputePipelineDescriptor {
-                label: Some("Batch Add pipeline"),
+                label: Some("Batch Multiply pipeline"),
                 layout: Some(&pipeline_layout),
                 module: &cs_module,
                 entry_point: "main",
@@ -151,7 +151,7 @@ impl Pipeline {
         //Create compute pass
         let mut compute_pass = encoder.begin_compute_pass(
             &wgpu::ComputePassDescriptor {
-                label: Some("Batch Add"),
+                label: Some("Batch Multiply"),
             }
         );
 

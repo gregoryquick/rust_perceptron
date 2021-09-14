@@ -17,23 +17,24 @@ fn main() {
     println!("Label:");
     println!("{:?}", batch_labels);
 
-    //let topology: Vec<usize> = vec![28*28, 1024, 32, 512, 10];
+    //let topology: Vec<usize> = vec![28*28, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 64, 2048, 2048, 2048, 2048, 512, 32, 10];
     //let my_network = network::NeuralNetwork::new(topology);
     //my_network.save_to_file("weights/network.bin");
     let mut my_network = network::NeuralNetwork::load_from_file("weights/network.bin");
 
     //Dereference data into vectors
     let input_data = {
-        let mut vector: Vec<f32> = vec![0f32; 28*28 * batch_size];
-        for (loc, data) in vector.iter_mut().zip(batch_images.iter()) {
-            *loc = **data;
+        let mut vector: Vec<f32> = Vec::with_capacity(28*28 * batch_size);
+        for data in batch_images.into_iter() {
+            vector.push(*data);
         }
         vector
     };
-    let _label_data = {
-        let mut vector: Vec<f32> = vec![0f32; 28*28 * batch_size];
-        for (loc, data) in vector.iter_mut().zip(batch_labels.iter()) {
-            *loc = **data;
+
+    let label_data = {
+        let mut vector: Vec<f32> = Vec::with_capacity(28*28 * batch_size);
+        for data in batch_labels.into_iter() {
+            vector.push(*data);
         }
         vector
     };
@@ -47,13 +48,13 @@ fn main() {
     //Run feedforward
     println!("Prediction 0:");
     println!("{:?}", my_network.feedforward::<f32>(&input_data, &network_data, &anchor, batch_size).unwrap());
+    println!("TEMP BACKPROP TEST:");
+    println!("{:?}", my_network.backprop::<f32>(&input_data, &label_data, &mut network_data, &anchor, batch_size).unwrap());
     println!("Prediction 1:");
-    println!("{:?}", my_network.forward_for_backprop::<f32>(&input_data, &mut network_data, &anchor, batch_size).unwrap());
-    println!("Prediction 2:");
     println!("{:?}", my_network.feedforward::<f32>(&input_data, &network_data, &anchor, batch_size).unwrap());
 
     //Save network
-    my_network.save_from_gpu(&anchor, &network_data);
-    my_network.save_to_file("weights/network.bin");
+    //my_network.save_from_gpu(&anchor, &network_data);
+    //my_network.save_to_file("weights/network.bin");
 }
 

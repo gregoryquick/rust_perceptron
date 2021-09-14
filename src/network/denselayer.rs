@@ -161,7 +161,7 @@ impl super::NetworkLayer for Denselayer {
                layer_data: &mut Vec<wgpu::Buffer>,
                anchor: &pipelines::Device,
                encoder: &mut wgpu::CommandEncoder,
-               batch_size: usize,) -> Vec<wgpu::Buffer> {
+               batch_size: usize,) -> (wgpu::Buffer, Vec<wgpu::Buffer>) {
         let device = &anchor.device;
         
         let mut gpu_data = layer_data.into_iter();
@@ -214,14 +214,121 @@ impl super::NetworkLayer for Denselayer {
 
         //Run activation pipeline
         activation_pipeline.run(encoder, self.output_dimension, batch_size);
-
         
+        //Create activationprime pipeline
+            let activationprime_pipeline = pipelines::leakyreluprime::Pipeline::new::<f32>(anchor, (
+                &activation_uniforms,
+                &weight_pipeline.output_buffer,
+            ),
+            self.output_dimension,
+            batch_size,
+        );
+
+        //Run activationprime pipeline
+        activationprime_pipeline.run(encoder, self.output_dimension, batch_size);
+
         //Create vec for return
-        let mut vec: Vec<wgpu::Buffer> = Vec::with_capacity(1);
-        vec.push(activation_pipeline.output_buffer);
+        let mut vec: Vec<wgpu::Buffer> = Vec::with_capacity(2);
+        vec.push(activationprime_pipeline.output_buffer);
 
         //Return
-        vec
+        (activation_pipeline.output_buffer, vec)
+    }
+
+    fn backprop(&self,
+                backprop_grad: &wgpu::Buffer,
+                layer_data: &Vec<wgpu::Buffer>, 
+                backprop_data: &Vec<wgpu::Buffer>,
+                anchor: &pipelines::Device,
+                encoder: &mut wgpu::CommandEncoder,
+                batch_size: usize,) -> (wgpu::Buffer, Vec<Option<wgpu::Buffer>>) {
+        let device = &anchor.device;
+        
+        let mut gpu_data = layer_data.into_iter();
+        let layer_weights = gpu_data.next().unwrap();
+
+        let mut gpu_data = backprop_data.into_iter();
+        let layer_outputprime = gpu_data.next().unwrap();
+        let layer_input = gpu_data.next().unwrap();
+
+        //Create backprop_error pipeline
+        let backprop_error_uniforms = {
+            let uniform_data = [self.output_dimension as u32, batch_size as u32];
+            device.create_buffer_init(
+                &BufferInitDescriptor {
+                    label: Some("Uniform Buffer"),
+                    contents: bytemuck::bytes_of(&uniform_data),
+                    usage: wgpu::BufferUsage::UNIFORM,
+                }
+            )
+        };
+
+        let backprop_error_pipeline = pipelines::elementmultiply::Pipeline::new::<f32>(anchor, (
+                &backprop_error_uniforms,
+                layer_outputprime,
+                backprop_grad,
+            ),
+            self.output_dimension,
+            batch_size,
+        );
+
+        //Run backprop_error pipeline
+        backprop_error_pipeline.run(encoder, self.output_dimension, batch_size);
+
+        //Create weight_grad pipeline
+        let weight_grad_uniforms = {
+            let uniform_data = [self.output_dimension as u32, batch_size as u32, self.input_dimension as u32];
+            device.create_buffer_init(
+                &BufferInitDescriptor {
+                    label: Some("Uniform Buffer"),
+                    contents: bytemuck::bytes_of(&uniform_data),
+                    usage: wgpu::BufferUsage::UNIFORM,
+                }
+            )
+        };
+
+        let weight_grad_pipeline = pipelines::multiplybytranspose::Pipeline::new::<f32>(anchor, (
+                &weight_grad_uniforms,
+                &backprop_error_pipeline.output_buffer,
+                layer_input,
+            ),
+            self.output_dimension,
+            batch_size,
+            self.input_dimension,
+        );
+
+        //Run weight_grad pipeline
+        weight_grad_pipeline.run(encoder, self.output_dimension, batch_size, self.input_dimension);
+
+        //Create input_grad pipeline
+        let input_grad_uniforms = {
+            let uniform_data = [self.input_dimension as u32, self.output_dimension as u32, batch_size as u32];
+            device.create_buffer_init(
+                &BufferInitDescriptor {
+                    label: Some("Uniform Buffer"),
+                    contents: bytemuck::bytes_of(&uniform_data),
+                    usage: wgpu::BufferUsage::UNIFORM,
+                }
+            )
+        };
+
+        let input_grad_pipeline = pipelines::multiplytransposewith::Pipeline::new::<f32>(anchor, (
+                &input_grad_uniforms,
+                layer_weights,
+                &backprop_error_pipeline.output_buffer,
+            ),
+            self.input_dimension,
+            self.output_dimension,
+            batch_size,
+        );
+
+        //Run input_grad pipeline
+        input_grad_pipeline.run(encoder, self.input_dimension,  self.output_dimension, batch_size);
+        
+        //Return
+        let mut vec: Vec<Option<wgpu::Buffer>> = Vec::with_capacity(1);
+        vec.push(Some(weight_grad_pipeline.output_buffer));
+        (input_grad_pipeline.output_buffer, vec)
     }
 }
 

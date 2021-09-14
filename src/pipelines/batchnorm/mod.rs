@@ -6,14 +6,12 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    //Take an 4 m-length vectors of mean and variance of batch and target and use to compute batchnorm m x n matrix
+    //Take an 2 m-length vectors of mean and variance of batch and use to compute batchnorm of an m x n matrix
     pub fn new<T: bytemuck::Pod>(anchor: &super::Device,
                                  buffers: (&wgpu::Buffer, // uniform buffer
                                            &wgpu::Buffer, // m x n matrix
                                            &wgpu::Buffer, // m-length vector
-                                           &wgpu::Buffer, // m-length vector
-                                           &wgpu::Buffer, // m-length vector
-                                           &wgpu::Buffer),// m-length vector
+                                           &wgpu::Buffer,),//m-length vector
                                 m_size: usize,
                                 n_size: usize,) -> Self {
         let type_size = std::mem::size_of::<T>();
@@ -32,12 +30,6 @@ impl Pipeline {
 
         let batch_var = buffers.3;
         //0-3
-
-        let target_mean = buffers.4;
-        //1-0
-        
-        let target_var = buffers.5;
-        //1-1
         
         let output_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -47,7 +39,7 @@ impl Pipeline {
                 mapped_at_creation: false,
             }
         );
-        //1-2
+        //1-0
         
         //Create bind group(s)
         let bind_group_layout_0 = device.create_bind_group_layout(
@@ -132,30 +124,6 @@ impl Pipeline {
                     visibility: wgpu::ShaderStage::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage {
-                            read_only: true,
-                        },
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(0),
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStage::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage {
-                            read_only: true,
-                        },
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(0),
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStage::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage {
                             read_only: false,
                         },
                         has_dynamic_offset: false,
@@ -171,14 +139,6 @@ impl Pipeline {
                 layout: &bind_group_layout_1,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: target_mean.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: target_var.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
                     resource: output_buffer.as_entire_binding(),
                 },],
             }
