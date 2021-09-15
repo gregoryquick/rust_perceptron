@@ -4,7 +4,6 @@ use rand::prelude::*;
 use futures::executor::block_on;
 use serde::{Serialize, Deserialize};
 use std::fs::File;
-//use std::collections::VecDeque;
 
 mod denselayer;
 mod batchnorm;
@@ -17,10 +16,12 @@ pub struct NeuralNetwork {
 
 #[typetag::serde(tag = "type")]
 pub trait NetworkLayer {
+    fn get_topology(&self) -> Vec<(usize, usize)>;
+
     fn load_to_gpu(&self, anchor: &pipelines::Device,) -> Vec<wgpu::Buffer>;
 
     fn save_from_gpu(&mut self, anchor: &pipelines::Device, data: &Vec<wgpu::Buffer>);
-    
+
     fn forward(&self,
                input: &wgpu::Buffer,
                layer_data: &Vec<wgpu::Buffer>,
@@ -95,6 +96,17 @@ impl NeuralNetwork {
             layers,
             output_size: *sizes.split_last().unwrap().0,
         }
+    }
+
+    pub fn get_topology(&self) -> Vec<Vec<(usize, usize)>> {
+        let layer_iterator = self.layers.iter();
+        let mut vec: Vec<Vec<(usize, usize)>> = Vec::new();
+        for layer in layer_iterator {
+            vec.push(layer.get_topology());
+        }
+
+        //Return
+        vec
     }
 
     pub fn save_to_file(&self, filelocation: &str) {
@@ -216,10 +228,9 @@ impl NeuralNetwork {
                                       labels: &Vec<T>,
                                       network_data: &mut Vec<Vec<wgpu::Buffer>>,
                                       anchor: &pipelines::Device,
-                                      batch_size: usize,) -> Option<Vec<T>> {//Vec<Vec<Option<wgpu::Buffer>>> {
+                                      batch_size: usize,) -> Vec<Vec<Option<wgpu::Buffer>>> {
         let queue = &anchor.queue;
         let device = &anchor.device;
-        let type_size = std::mem::size_of::<T>();
 
         //Load data to gpu
         use wgpu::util::{BufferInitDescriptor, DeviceExt};
@@ -247,7 +258,7 @@ impl NeuralNetwork {
         );
 
         //Feed input through layers to get info for backprop
-        let layer_iterator = self.layers.iter().zip(network_data.into_iter());
+        let layer_iterator = self.layers.iter().zip(network_data.iter_mut());
         let mut current_output = input_buffer;
         let intermediate_values = {
             let mut vec: Vec<Vec<wgpu::Buffer>> = Vec::new();
@@ -265,53 +276,60 @@ impl NeuralNetwork {
             }
             vec
         };
+        
+        //Perform backprop
+        let backprop_iter = self.layers.iter()
+            .zip(network_data.iter())
+            .zip(intermediate_values.iter())
+            .rev();
+        let mut backprop_grad = {
+            //Create costprime pipeline
+            let costprime_uniforms = {
+                let uniform_data = [self.output_size as u32, batch_size as u32];
+                device.create_buffer_init(
+                    &BufferInitDescriptor {
+                        label: Some("Uniform Buffer"),
+                        contents: bytemuck::bytes_of(&uniform_data),
+                        usage: wgpu::BufferUsage::UNIFORM,
+                    }
+                )
+            };
+            let costprime_pipeline = pipelines::elementsubtract::Pipeline::new::<T>(anchor, (
+                    &costprime_uniforms,
+                    &current_output,
+                    &label_buffer,
+                ),
+                self.output_size,
+                batch_size,
+            );
 
-        //Create staging buffer for loading out of gpu
-        let staging_buffer = device.create_buffer(
-            &wgpu::BufferDescriptor {
-                label: Some("Staging buffer"),
-                size: (type_size * self.output_size * batch_size) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
-                mapped_at_creation: false,
+            //Run costprime pipeline
+            costprime_pipeline.run(&mut encoder, self.output_size, batch_size);
+
+            //Return
+            costprime_pipeline.output_buffer
+        };
+        let backprop_values = {
+            let mut vec: Vec<Vec<Option<wgpu::Buffer>>> = Vec::new();
+            for ((layer, layer_data), intermediate_data) in backprop_iter {
+                let (layer_input_grad, layer_grads) = layer.backprop(
+                    &backprop_grad,
+                    layer_data,
+                    intermediate_data,
+                    &anchor,
+                    &mut encoder,
+                    batch_size,
+                );
+                vec.push(layer_grads);
+                backprop_grad = layer_input_grad;
             }
-        );
-
-        //Copy out of gpu
-        encoder.copy_buffer_to_buffer(
-            &current_output, 0,
-            &staging_buffer, 0,
-            (type_size * self.output_size * batch_size) as wgpu::BufferAddress,
-        );
+            vec
+        };
 
         //Submit encoder
         queue.submit(Some(encoder.finish()));
 
-        //Create future of the computation
-        let buffer_slice = staging_buffer.slice(..);
-        let buffer_future = buffer_slice.map_async(wgpu::MapMode::Read);
-        
-        //Wait for computation to complete
-        device.poll(wgpu::Maintain::Wait);
-
-        block_on(async {
-            match buffer_future.await {
-                Ok(()) => {
-                    //Get buffer contents
-                    let data = buffer_slice.get_mapped_range();
-                    //Convert to T
-                    let result: Vec<T> = data.chunks_exact(type_size).map(|b| *bytemuck::from_bytes::<T>(b)).collect();
-                     //Drop mapped view
-                    drop(data);
-                    //Unmap buffer
-                    staging_buffer.unmap();
-
-                    return Some(result)
-                }
-                Err(e) => {
-                    eprintln!("Error: {}", e);
-                    None
-                }
-            }
-        }) 
+        //Return
+        backprop_values
     }
 }

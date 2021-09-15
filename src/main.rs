@@ -1,7 +1,7 @@
 mod data;
 mod pipelines;
 mod network;
-//mod optimisers;
+mod optimisers;
 
 use futures::executor::block_on;
 
@@ -17,10 +17,14 @@ fn main() {
     println!("Label:");
     println!("{:?}", batch_labels);
 
-    //let topology: Vec<usize> = vec![28*28, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 64, 2048, 2048, 2048, 2048, 512, 32, 10];
-    //let my_network = network::NeuralNetwork::new(topology);
-    //my_network.save_to_file("weights/network.bin");
+    let generator_topology: Vec<usize> = vec![28*28, 1024, 1024, 10];
+    let my_network = network::NeuralNetwork::new(generator_topology);
+    my_network.save_to_file("weights/network.bin");
     let mut my_network = network::NeuralNetwork::load_from_file("weights/network.bin");
+
+    let mut optimiser = optimisers::Stochasticgradientdescent::new(0.1);
+
+    let network_topology = my_network.get_topology();
 
     //Dereference data into vectors
     let input_data = {
@@ -45,13 +49,15 @@ fn main() {
     //Load network to gpu
     let mut network_data = my_network.load_to_gpu(&anchor);
 
-    //Run feedforward
+    //Run training loop
     println!("Prediction 0:");
     println!("{:?}", my_network.feedforward::<f32>(&input_data, &network_data, &anchor, batch_size).unwrap());
-    println!("TEMP BACKPROP TEST:");
-    println!("{:?}", my_network.backprop::<f32>(&input_data, &label_data, &mut network_data, &anchor, batch_size).unwrap());
-    println!("Prediction 1:");
-    println!("{:?}", my_network.feedforward::<f32>(&input_data, &network_data, &anchor, batch_size).unwrap());
+    for i in 1..100 {
+        let network_grads =  my_network.backprop::<f32>(&input_data, &label_data, &mut network_data, &anchor, batch_size);
+        optimiser.step(&mut network_data, &network_grads, &anchor, &network_topology);
+        println!("Prediction {}:", i);
+        println!("{:?}", my_network.feedforward::<f32>(&input_data, &network_data, &anchor, batch_size).unwrap());
+    }
 
     //Save network
     //my_network.save_from_gpu(&anchor, &network_data);

@@ -17,6 +17,18 @@ pub struct Batchnorm {
 
 #[typetag::serde]
 impl super::NetworkLayer for Batchnorm {
+    fn get_topology(&self) -> Vec<(usize, usize)> {
+        let mut vec: Vec<(usize, usize)> = Vec::with_capacity(5);
+        vec.push((self.dimension, 1));
+        vec.push((self.dimension, 1));
+        vec.push((self.dimension, 1));
+        vec.push((self.dimension, 1));
+        vec.push((1, 1));
+        
+        //Return
+        vec
+    }
+
     fn load_to_gpu(&self, anchor: &pipelines::Device,) -> Vec<wgpu::Buffer> {
         let device = &anchor.device;
         let mut vec: Vec<wgpu::Buffer> = Vec::with_capacity(5);
@@ -532,19 +544,19 @@ impl super::NetworkLayer for Batchnorm {
         let device = &anchor.device;
         
         let mut gpu_data = layer_data.into_iter();
-        let layer_gamma = gpu_data.next().unwrap();
-        let layer_beta = gpu_data.next().unwrap();
-        let data_var =  gpu_data.next().unwrap();
-        let data_mean = gpu_data.next().unwrap();
-        let batches_sampled = gpu_data.next().unwrap();
+        let _layer_gamma = gpu_data.next().unwrap();
+        let _layer_beta = gpu_data.next().unwrap();
+        let _data_var =  gpu_data.next().unwrap();
+        let _data_mean = gpu_data.next().unwrap();
+        let _batches_sampled = gpu_data.next().unwrap();
 
         let mut gpu_data = backprop_data.into_iter();
         let layer_normed = gpu_data.next().unwrap();
         let layer_normprime = gpu_data.next().unwrap();
-        let layer_input = gpu_data.next().unwrap();
+        let _layer_input = gpu_data.next().unwrap();
 
-        //Create input_grad pipeline
-        let input_grad_uniforms = {
+        //Create beta_grad pipeline
+        let beta_grad_uniforms = {
             let uniform_data = [self.dimension as u32, batch_size as u32];
             device.create_buffer_init(
                 &BufferInitDescriptor {
@@ -555,8 +567,32 @@ impl super::NetworkLayer for Batchnorm {
             )
         };
 
+        let beta_grad_pipeline = pipelines::batchtotal::Pipeline::new::<f32>(anchor, (
+                &beta_grad_uniforms,
+                backprop_grad,
+            ),
+            self.dimension,
+            batch_size,
+        );
+
+        //Run beta_grad pipeline
+        beta_grad_pipeline.run(encoder, self.dimension, batch_size);
+
+        //Create gamma_grad pipeline
+        let gamma_grad_pipeline = pipelines::batchtotal::Pipeline::new::<f32>(anchor, (
+                &beta_grad_uniforms,
+                layer_normed,
+            ),
+            self.dimension,
+            batch_size,
+        );
+
+        //Run gamma_grad pipeline
+        gamma_grad_pipeline.run(encoder, self.dimension, batch_size);
+
+        //Create input_grad pipeline
         let input_grad_pipeline = pipelines::elementmultiply::Pipeline::new::<f32>(anchor, (
-                &input_grad_uniforms,
+                &beta_grad_uniforms,
                 layer_normprime,
                 backprop_grad,
             ),
@@ -569,6 +605,11 @@ impl super::NetworkLayer for Batchnorm {
 
         //Return
         let mut vec: Vec<Option<wgpu::Buffer>> = Vec::with_capacity(5);
+        vec.push(Some(gamma_grad_pipeline.output_buffer));
+        vec.push(Some(beta_grad_pipeline.output_buffer));
+        vec.push(None);
+        vec.push(None);
+        vec.push(None);
         (input_grad_pipeline.output_buffer, vec)
     }
 }

@@ -14,6 +14,14 @@ pub struct Denselayer {
 
 #[typetag::serde]
 impl super::NetworkLayer for Denselayer {
+    fn get_topology(&self) -> Vec<(usize, usize)> {
+        let mut vec: Vec<(usize, usize)> = Vec::with_capacity(1);
+        vec.push((self.output_dimension, self.input_dimension));
+        
+        //Return
+        vec
+    }
+
     fn load_to_gpu(&self, anchor: &pipelines::Device,) -> Vec<wgpu::Buffer> {
         let device = &anchor.device;
         let mut vec: Vec<wgpu::Buffer> = Vec::with_capacity(1);

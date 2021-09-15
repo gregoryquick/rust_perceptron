@@ -1052,7 +1052,7 @@ dependencies = [
 
 [[package]]
 name = "rust_perceptron"
-version = "0.5.7"
+version = "0.5.8"
 dependencies = [
  "bincode",
  "bytemuck",
