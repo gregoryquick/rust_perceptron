@@ -36,7 +36,7 @@ impl super::NetworkLayer for Batchnorm {
             &BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&self.gamma[..]),
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             }
         );
         vec.push(layer_gamma);
@@ -45,7 +45,7 @@ impl super::NetworkLayer for Batchnorm {
             &BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&self.beta[..]),
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             }
         );
         vec.push(layer_beta);
@@ -54,7 +54,7 @@ impl super::NetworkLayer for Batchnorm {
             &BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&self.data_var[..]),
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             }
         );
         vec.push(data_var);
@@ -63,7 +63,7 @@ impl super::NetworkLayer for Batchnorm {
             &BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&self.data_mean[..]),
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             }
         );
         vec.push(data_mean);
@@ -72,7 +72,7 @@ impl super::NetworkLayer for Batchnorm {
             &BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&[self.batches_sampled]),
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             }
         );
         vec.push(batches_sampled);
@@ -104,7 +104,7 @@ impl super::NetworkLayer for Batchnorm {
             &wgpu::BufferDescriptor {
                 label: Some("Staging buffer"),
                 size: (type_size * self.dimension) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }
         );
@@ -118,7 +118,7 @@ impl super::NetworkLayer for Batchnorm {
             &wgpu::BufferDescriptor {
                 label: Some("Staging buffer"),
                 size: (type_size * self.dimension) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }
         );
@@ -132,7 +132,7 @@ impl super::NetworkLayer for Batchnorm {
             &wgpu::BufferDescriptor {
                 label: Some("Staging buffer"),
                 size: (type_size * self.dimension) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }
         );
@@ -146,7 +146,7 @@ impl super::NetworkLayer for Batchnorm {
             &wgpu::BufferDescriptor {
                 label: Some("Staging buffer"),
                 size: (type_size * self.dimension) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }
         );
@@ -160,7 +160,7 @@ impl super::NetworkLayer for Batchnorm {
             &wgpu::BufferDescriptor {
                 label: Some("Staging buffer"),
                 size: (type_size) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }
         );
@@ -322,7 +322,7 @@ impl super::NetworkLayer for Batchnorm {
                 &BufferInitDescriptor {
                     label: Some("Uniform Buffer"),
                     contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsage::UNIFORM,
+                    usage: wgpu::BufferUsages::UNIFORM,
                 }
             )
         };
@@ -392,7 +392,7 @@ impl super::NetworkLayer for Batchnorm {
                 &BufferInitDescriptor {
                     label: Some("Uniform Buffer"),
                     contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsage::UNIFORM,
+                    usage: wgpu::BufferUsages::UNIFORM,
                 }
             )
         };
@@ -434,7 +434,7 @@ impl super::NetworkLayer for Batchnorm {
                 &BufferInitDescriptor {
                     label: Some("Uniform Buffer"),
                     contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsage::UNIFORM,
+                    usage: wgpu::BufferUsages::UNIFORM,
                 }
             )
         };
@@ -561,7 +561,7 @@ impl super::NetworkLayer for Batchnorm {
                 &BufferInitDescriptor {
                     label: Some("Uniform Buffer"),
                     contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsage::UNIFORM,
+                    usage: wgpu::BufferUsages::UNIFORM,
                 }
             )
         };

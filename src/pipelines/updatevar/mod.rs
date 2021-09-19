@@ -44,7 +44,7 @@ impl Pipeline {
             &wgpu::BufferDescriptor {
                 label: Some("Output buffer"),
                 size: (type_size * m_size) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
                 mapped_at_creation: false,
             }
         );
@@ -56,7 +56,7 @@ impl Pipeline {
                 label: Some("Update Var bind group layout 0"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStage::COMPUTE,
+                    visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -66,7 +66,7 @@ impl Pipeline {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: wgpu::ShaderStage::COMPUTE,
+                    visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage {
                             read_only: true,
@@ -78,7 +78,7 @@ impl Pipeline {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
-                    visibility: wgpu::ShaderStage::COMPUTE,
+                    visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage {
                             read_only: true,
@@ -90,7 +90,7 @@ impl Pipeline {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 3,
-                    visibility: wgpu::ShaderStage::COMPUTE,
+                    visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage {
                             read_only: true,
@@ -130,7 +130,7 @@ impl Pipeline {
                 label: Some("Update Var group layout 1"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStage::COMPUTE,
+                    visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage {
                             read_only: true,
@@ -142,7 +142,7 @@ impl Pipeline {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: wgpu::ShaderStage::COMPUTE,
+                    visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage {
                             read_only: true,
@@ -154,7 +154,7 @@ impl Pipeline {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
-                    visibility: wgpu::ShaderStage::COMPUTE,
+                    visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage {
                             read_only: false,
@@ -193,7 +193,6 @@ impl Pipeline {
             &wgpu::ShaderModuleDescriptor {
                 label: None,
                 source: wgpu::util::make_spirv(cs_spirv.as_binary_u8()),
-                flags: wgpu::ShaderFlags::empty(),
             }
         );
         

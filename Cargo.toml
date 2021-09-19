@@ -1,8 +1,9 @@
+cargo-features = ["edition2021"]
 [package]
 name = "rust_perceptron"
-version = "0.5.9"
+version = "0.5.10"
 authors = ["gregoryquick <gregory@quicks.me>"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -16,4 +17,4 @@ bytemuck = "1.5"
 shaderc = "0.7"
 rand = "0.8"
 futures = "0.3"
-wgpu = "0.9"
+wgpu = {version = "0.10", features = ["spirv"]}

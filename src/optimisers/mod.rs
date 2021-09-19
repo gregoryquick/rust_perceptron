@@ -26,7 +26,7 @@ impl Stochasticgradientdescent {
             &BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&[self.learning_rate]),
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             }
         );
 
@@ -58,7 +58,7 @@ impl Stochasticgradientdescent {
                                 &BufferInitDescriptor {
                                     label: Some("Uniform Buffer"),
                                     contents: bytemuck::bytes_of(&uniform_data),
-                                    usage: wgpu::BufferUsage::UNIFORM,
+                                    usage: wgpu::BufferUsages::UNIFORM,
                                 }
                             )
                         };

@@ -29,7 +29,7 @@ impl super::NetworkLayer for Denselayer {
             &BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&self.weights[..]),
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             }
         );
         vec.push(layer_weights);
@@ -57,7 +57,7 @@ impl super::NetworkLayer for Denselayer {
             &wgpu::BufferDescriptor {
                 label: Some("Staging buffer"),
                 size: (type_size * self.output_dimension *  self.input_dimension) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }
         );
@@ -118,7 +118,7 @@ impl super::NetworkLayer for Denselayer {
                 &BufferInitDescriptor {
                     label: Some("Uniform Buffer"),
                     contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsage::UNIFORM,
+                    usage: wgpu::BufferUsages::UNIFORM,
                 }
             )
         };
@@ -143,7 +143,7 @@ impl super::NetworkLayer for Denselayer {
                 &BufferInitDescriptor {
                     label: Some("Uniform Buffer"),
                     contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsage::UNIFORM,
+                    usage: wgpu::BufferUsages::UNIFORM,
                 }
             )
         };
@@ -181,7 +181,7 @@ impl super::NetworkLayer for Denselayer {
                 &BufferInitDescriptor {
                     label: Some("Uniform Buffer"),
                     contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsage::UNIFORM,
+                    usage: wgpu::BufferUsages::UNIFORM,
                 }
             )
         };
@@ -206,7 +206,7 @@ impl super::NetworkLayer for Denselayer {
                 &BufferInitDescriptor {
                     label: Some("Uniform Buffer"),
                     contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsage::UNIFORM,
+                    usage: wgpu::BufferUsages::UNIFORM,
                 }
             )
         };
@@ -265,7 +265,7 @@ impl super::NetworkLayer for Denselayer {
                 &BufferInitDescriptor {
                     label: Some("Uniform Buffer"),
                     contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsage::UNIFORM,
+                    usage: wgpu::BufferUsages::UNIFORM,
                 }
             )
         };
@@ -289,7 +289,7 @@ impl super::NetworkLayer for Denselayer {
                 &BufferInitDescriptor {
                     label: Some("Uniform Buffer"),
                     contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsage::UNIFORM,
+                    usage: wgpu::BufferUsages::UNIFORM,
                 }
             )
         };
@@ -314,7 +314,7 @@ impl super::NetworkLayer for Denselayer {
                 &BufferInitDescriptor {
                     label: Some("Uniform Buffer"),
                     contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsage::UNIFORM,
+                    usage: wgpu::BufferUsages::UNIFORM,
                 }
             )
         };
