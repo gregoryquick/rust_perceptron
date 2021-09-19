@@ -2,12 +2,12 @@ pub mod mnist;
 
 use rand::prelude::*;
 
-pub struct LabeledData<Data: bytemuck::Pod> {
+pub struct LabeledData<Data> {
     data: Vec<Data>,
     label: Vec<Data>,
 }
 
-impl<Data: bytemuck::Pod> LabeledData<Data> {
+impl<Data> LabeledData<Data> {
     fn get_data(&self) -> &Vec<Data> {
         &self.data
     }
@@ -17,11 +17,11 @@ impl<Data: bytemuck::Pod> LabeledData<Data> {
     }
 }
 
-pub struct DataSet<Data: bytemuck::Pod> {
+pub struct DataSet<Data> {
     data: Vec<LabeledData<Data>>,
 }
 
-impl<Data: bytemuck::Pod> DataSet<Data> {
+impl<Data> DataSet<Data> {
     pub fn generate_batch(&self, batch_size: usize) -> Vec<&LabeledData<Data>> {
         let mut rng = rand::thread_rng();
         let batch_data: Vec<&LabeledData<Data>> = self.data.iter().choose_multiple(&mut rng, batch_size);

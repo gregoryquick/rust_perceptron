@@ -4,7 +4,6 @@ use serde::{Serialize, Deserialize};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use futures::executor::block_on;
 
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Denselayer {
     pub weights: Vec<f32>,

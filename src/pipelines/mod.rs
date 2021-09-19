@@ -13,6 +13,7 @@ pub mod multiplybytranspose;
 pub mod multiplytransposewith;
 pub mod scalarmultiply;
 pub mod scalebatchwithvector;
+pub mod squarederror;
 pub mod updatemean;
 pub mod updatesample;
 pub mod updatevar;
