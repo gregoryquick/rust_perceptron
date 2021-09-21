@@ -6,9 +6,10 @@ mod optimisers;
 use futures::executor::block_on;
 
 fn main() {
-
+    //Logging
     use std::env;
     env::set_var("RUST_BACKTRACE", "1");
+    env_logger::init();
 
     //Global vars
     let output_size: usize = 10;
