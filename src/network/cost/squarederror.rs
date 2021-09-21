@@ -25,7 +25,7 @@ impl super::CostFunction for SquaredError {
                 &BufferInitDescriptor {
                     label: Some("Uniform Buffer"),
                     contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsage::UNIFORM,
+                    usage: wgpu::BufferUsages::UNIFORM,
                 }
             )
         };
@@ -73,7 +73,7 @@ impl super::CostFunction for SquaredError {
                 &BufferInitDescriptor {
                     label: Some("Uniform Buffer"),
                     contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsage::UNIFORM,
+                    usage: wgpu::BufferUsages::UNIFORM,
                 }
             )
         };

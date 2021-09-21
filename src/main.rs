@@ -6,6 +6,11 @@ mod optimisers;
 use futures::executor::block_on;
 
 fn main() {
+    //Logging
+    use std::env;
+    env::set_var("RUST_BACKTRACE", "1");
+    env_logger::init();
+
     //Global vars
     let output_size: usize = 10;
     let batch_size: usize = 32;
@@ -58,7 +63,7 @@ fn main() {
     let prediction = my_network.feedforward::<f32>(&input_data, &network_data, &anchor, batch_size);
     let cost = my_network.cost::<f32>(&prediction, &label_data, &anchor, batch_size);
     println!("{:?}", from_gpu::<f32>(&cost, &anchor, batch_size).unwrap());
-    
+
     //Save network
     my_network.save_from_gpu(&anchor, &network_data);
     my_network.save_to_file("weights/network.bin");
@@ -87,7 +92,7 @@ fn to_gpu<T: bytemuck::Pod>(input: &Vec<T>, anchor: &pipelines::Device) -> wgpu:
         &BufferInitDescriptor {
             label: None,
             contents: bytemuck::cast_slice(&input[..]),
-            usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         }
     );
 
@@ -112,7 +117,7 @@ fn from_gpu<T: bytemuck::Pod>(buffer: &wgpu::Buffer, anchor: &pipelines::Device,
         &wgpu::BufferDescriptor {
             label: Some("Staging buffer"),
             size: (type_size * size) as wgpu::BufferAddress,
-            usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         }
     );

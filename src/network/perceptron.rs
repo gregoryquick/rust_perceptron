@@ -84,7 +84,7 @@ impl Network {
             &BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&input[..]),
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             }
         );
 
@@ -128,7 +128,7 @@ impl Network {
             &BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&labels[..]),
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             }
         );
         //Create command buffer encoder
@@ -169,7 +169,7 @@ impl Network {
             &BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&input[..]),
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             }
         );
         
@@ -177,7 +177,7 @@ impl Network {
             &BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&labels[..]),
-                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             }
         );
 
