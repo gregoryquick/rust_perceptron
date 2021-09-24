@@ -8,8 +8,7 @@ impl Pipeline {
     //Take an m x n matrix an and m-length vector of means along n to get m-length vector of variances along n
     pub fn new<T: bytemuck::Pod>(anchor: &super::Device,
                                  buffers: (&wgpu::Buffer, // uniform buffer
-                                           &wgpu::Buffer, // m x n matrix
-                                           &wgpu::Buffer),// m-length vector
+                                           &wgpu::Buffer),// m x n matrix
                                  m_size: usize,
                                  _n_size: usize,) -> Self {
         let type_size = std::mem::size_of::<T>();
@@ -23,9 +22,6 @@ impl Pipeline {
         let matrix_buffer = buffers.1;
         //0-1
         
-        let vector_buffer = buffers.2;
-        //0-2
-        
         let output_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("Output buffer"),
@@ -34,7 +30,7 @@ impl Pipeline {
                 mapped_at_creation: false,
             }
         );
-        //0-3
+        //0-2
         
         //Create bind group(s)
         let bind_group_layout_0 = device.create_bind_group_layout(
@@ -73,18 +69,6 @@ impl Pipeline {
                         min_binding_size: wgpu::BufferSize::new(0),
                     },
                     count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage {
-                            read_only: false,
-                        },
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(0),
-                    },
-                    count: None,
                 },],
             }
         );
@@ -102,10 +86,6 @@ impl Pipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: vector_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
                     resource: output_buffer.as_entire_binding(),
                 },],
             }

@@ -8,21 +8,20 @@ layout(set = 0, binding = 1) buffer Matrix {
     float[] matrix;
 };
 
-layout(set = 0, binding = 2) buffer Vector {
-    float[] vector;
-};
-
-layout(set = 0, binding = 3) buffer Target {
+layout(set = 0, binding = 2) buffer Target {
     float[] target;
 };
 
 float get_element(uint index_of_row) {
     //Matrix: row_size x column_size
-    //Vector: row_size
     float accumulator = 0.0;
+    float mean = 0.0;
     for(uint index_of_column = 0; index_of_column < max_column_index; index_of_column++){
-        float difference = matrix[index_of_column * max_row_index + index_of_row] - vector[index_of_row];
-        accumulator += difference * difference;
+        float k = float(index_of_column) + 1.0;
+        float delta = matrix[index_of_column * max_row_index + index_of_row] - mean;
+        mean += delta / k;
+        float delta2 = matrix[index_of_column * max_row_index + index_of_row] - mean;
+        accumulator += delta * delta2;
     }
     //Would rather have nice behavior than unbiased estimator.
     return accumulator/float(max_column_index);

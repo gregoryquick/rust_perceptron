@@ -412,7 +412,6 @@ impl super::NetworkLayer for Batchnorm {
         let variance_pipeline = pipelines::batchvar::Pipeline::new::<f32>(anchor, (
                 &mean_uniforms,
                 input,
-                &mean_pipeline.output_buffer,
             ),
             self.dimension,
             batch_size,
@@ -484,7 +483,7 @@ impl super::NetworkLayer for Batchnorm {
         let batchnormprime_pipeline = pipelines::batchnormprime::Pipeline::new::<f32>(anchor, (
                 &mean_uniforms,
                 layer_gamma,
-                data_var,
+                &var_update_pipeline.output_buffer,
             ),
             self.dimension,
             batch_size,

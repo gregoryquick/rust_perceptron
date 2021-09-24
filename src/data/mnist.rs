@@ -30,7 +30,7 @@ pub fn load_data(dataset_name: &str) -> Result<DataSet<f32>, std::io::Error> {
      for (image, classification) in images.into_iter().zip(classifications.into_iter()) {
         ret.push(LabeledData::<f32> {
             data: image,
-            label: classification,
+            labels: classification,
         })
     }
     Ok(DataSet::<f32> {

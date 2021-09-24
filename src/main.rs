@@ -13,7 +13,7 @@ fn main() {
 
     //Global vars
     let output_size: usize = 10;
-    let batch_size: usize = 32;
+    let batch_size: usize = 64;
     
     //Load data
     let data_set = data::mnist::load_data("train").unwrap();
@@ -23,7 +23,6 @@ fn main() {
     use network::CostFunction::*;
     let generator_topology = vec![Batchnorm, DenseLayer(1024), Batchnorm, DenseLayer(1024), Batchnorm, Softmax(output_size)];
     let mut my_network = network::perceptron::Network::new(28*28, generator_topology, CrossEntropy);
-    //my_network.save_to_file("weights/network.bin");
     //let mut my_network = network::perceptron::Network::load_from_file("weights/network.bin");
 
     let mut optimiser = optimisers::Stochasticgradientdescent::new(0.01);
@@ -36,46 +35,21 @@ fn main() {
     //Load network data to gpu
     let mut network_data = my_network.load_to_gpu(&anchor);
 
-    //Get batch
-    let batch = data_set.generate_batch(batch_size);
-    let batch_images = data::DataSet::<f32>::get_data(&batch);
-    let batch_labels = data::DataSet::<f32>::get_labels(&batch);
-
-    //Load batch data into vectors
-    let input_data = {
-        let mut vector: Vec<f32> = Vec::with_capacity(28*28 * batch_size);
-        for data in batch_images.into_iter() {
-            vector.push(*data);
-        }
-        vector
-    };
-
-    let label_data = {
-        let mut vector: Vec<f32> = Vec::with_capacity(28*28 * batch_size);
-        for data in batch_labels.into_iter() {
-            vector.push(*data);
-        }
-        vector
-    };
-
-    //Initial prediction with weights (and make sure that mean and var estimates are initilized)
-    my_network.backprop::<f32>(&input_data, &label_data, &mut network_data, &anchor, batch_size);
-    println!("Prediction 0:");
-    let prediction = my_network.feedforward::<f32>(&input_data, &network_data, &anchor, batch_size);
-    let cost = my_network.cost::<f32>(&prediction, &label_data, &anchor, batch_size, true);
-    println!("{:?}", from_gpu::<f32>(&cost, &anchor, 1).unwrap());
-
-    //Save network
-    my_network.save_from_gpu(&anchor, &network_data);
-    my_network.save_to_file("weights/network.bin");
-
     //Run training loop
-    for i in 1..100 {
-        let network_grads = my_network.backprop::<f32>(&input_data, &label_data, &mut network_data, &anchor, batch_size);
+    for i in 0..20 {
+        //Get training batch
+        let batch = data_set.generate_batch(batch_size);
+        let batch_images = batch.get_data();
+        let batch_labels = batch.get_labels();
+
+        //Network things
+        let network_grads = my_network.backprop::<f32>(&batch_images, &batch_labels, &mut network_data, &anchor, batch_size);
         optimiser.step(&mut network_data, &network_grads, &anchor, &network_topology);
+
+        //Compute cost
         println!("Prediction {}:", i);
-        let prediction = my_network.feedforward::<f32>(&input_data, &network_data, &anchor, batch_size);
-        let cost = my_network.cost::<f32>(&prediction, &label_data, &anchor, batch_size, true);
+        let prediction = my_network.feedforward::<f32>(&batch_images, &network_data, &anchor, batch_size);
+        let cost = my_network.cost::<f32>(&prediction, &batch_labels, &anchor, batch_size, true);
         println!("{:?}", from_gpu::<f32>(&cost, &anchor, 1).unwrap());
     }
 
