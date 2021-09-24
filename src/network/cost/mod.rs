@@ -1,6 +1,7 @@
 use crate::pipelines;
 
 pub mod squarederror;
+pub mod crossentropy;
 
 #[typetag::serde(tag = "type")]
 pub trait CostFunction {
@@ -26,6 +27,11 @@ pub fn generate_cost(input_size: usize, cost_function: super::CostFunction) -> B
     match cost_function {
         SquaredError => {
             Box::new(squarederror::SquaredError {
+                dimension: input_size,
+            })
+        },
+        CrossEntropy => {
+            Box::new(crossentropy::CrossEntropy {
                 dimension: input_size,
             })
         },

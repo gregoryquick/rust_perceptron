@@ -5,14 +5,14 @@ use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use futures::executor::block_on;
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Denselayer {
+pub struct Softmax {
     pub weights: Vec<f32>,
     pub output_dimension: usize,
     pub input_dimension: usize,
 }
 
 #[typetag::serde]
-impl super::NetworkLayer for Denselayer {
+impl super::NetworkLayer for Softmax {
     fn get_topology(&self) -> Vec<(usize, usize)> {
         let mut vec: Vec<(usize, usize)> = Vec::with_capacity(1);
         vec.push((self.output_dimension, self.input_dimension));
@@ -136,7 +136,7 @@ impl super::NetworkLayer for Denselayer {
         //Run weight pipeline
         weight_pipeline.run(encoder, self.output_dimension, self.input_dimension, batch_size);
 
-        //Create activation pipeline
+        //Create batchmax pipeline
         let activation_uniforms = {
             let uniform_data = [self.output_dimension as u32, batch_size as u32,];
             device.create_buffer_init(
@@ -148,7 +148,7 @@ impl super::NetworkLayer for Denselayer {
             )
         };
         
-        let activation_pipeline = pipelines::leakyrelu::Pipeline::new::<f32>(anchor, (
+        let batchmax_pipeline = pipelines::batchmax::Pipeline::new::<f32>(anchor, (
                 &activation_uniforms,
                 &weight_pipeline.output_buffer,
             ),
@@ -156,11 +156,61 @@ impl super::NetworkLayer for Denselayer {
             batch_size,
         );
 
-        //Run activation pipeline
-        activation_pipeline.run(encoder, self.output_dimension, batch_size);
+        //Run batchmax pipeline
+        batchmax_pipeline.run(encoder, self.output_dimension, batch_size);
+
+        //Create batchshift pipeline
+        let batchshift_pipeline = pipelines::subtractscalarsfrombatch::Pipeline::new::<f32>(anchor, (
+                &activation_uniforms,
+                &weight_pipeline.output_buffer,
+                &batchmax_pipeline.output_buffer,
+            ),
+            self.output_dimension,
+            batch_size,
+        );
+
+        //Run batchshift pipeline
+        batchshift_pipeline.run(encoder, self.output_dimension, batch_size);
+
+        //Create exponential pipeline
+        let exponential_pipeline = pipelines::expfunct::Pipeline::new::<f32>(anchor, (
+                &activation_uniforms,
+                &batchshift_pipeline.output_buffer,
+            ),
+            self.output_dimension,
+            batch_size,
+        );
+
+        //Run exponential pipeline
+        exponential_pipeline.run(encoder, self.output_dimension, batch_size);
+
+        //Create denominator pipeline
+        let denominator_pipeline = pipelines::batchtotal::Pipeline::new::<f32>(anchor, (
+                &activation_uniforms,
+                &exponential_pipeline.output_buffer,
+            ),
+            self.output_dimension,
+            batch_size,
+        );
+
+        //Run denominator pipeline
+        denominator_pipeline.run(encoder, self.output_dimension, batch_size);
+
+        //Run softmax pipeline
+        let softmax_pipeline = pipelines::dividebatchbyvector::Pipeline::new::<f32>(anchor, (
+                &activation_uniforms,
+                &exponential_pipeline.output_buffer,
+                &denominator_pipeline.output_buffer,
+            ),
+            self.output_dimension,
+            batch_size,
+        );
+
+        //Run softmax pipeline
+        softmax_pipeline.run(encoder, self.output_dimension, batch_size);
 
         //Return
-        activation_pipeline.output_buffer
+        softmax_pipeline.output_buffer
     }
 
     fn forward_for_backprop(&self, 
@@ -199,7 +249,7 @@ impl super::NetworkLayer for Denselayer {
         //Run weight pipeline
         weight_pipeline.run(encoder, self.output_dimension, self.input_dimension, batch_size);
 
-        //Create activation pipeline
+        //Create batchmax pipeline
         let activation_uniforms = {
             let uniform_data = [self.output_dimension as u32, batch_size as u32,];
             device.create_buffer_init(
@@ -211,7 +261,7 @@ impl super::NetworkLayer for Denselayer {
             )
         };
         
-        let activation_pipeline = pipelines::leakyrelu::Pipeline::new::<f32>(anchor, (
+        let batchmax_pipeline = pipelines::batchmax::Pipeline::new::<f32>(anchor, (
                 &activation_uniforms,
                 &weight_pipeline.output_buffer,
             ),
@@ -219,12 +269,63 @@ impl super::NetworkLayer for Denselayer {
             batch_size,
         );
 
-        //Run activation pipeline
-        activation_pipeline.run(encoder, self.output_dimension, batch_size);
+        //Run batchmax pipeline
+        batchmax_pipeline.run(encoder, self.output_dimension, batch_size);
+
+        //Create batchshift pipeline
+        let batchshift_pipeline = pipelines::subtractscalarsfrombatch::Pipeline::new::<f32>(anchor, (
+                &activation_uniforms,
+                &weight_pipeline.output_buffer,
+                &batchmax_pipeline.output_buffer,
+            ),
+            self.output_dimension,
+            batch_size,
+        );
+
+        //Run batchshift pipeline
+        batchshift_pipeline.run(encoder, self.output_dimension, batch_size);
+
+        //Create exponential pipeline
+        let exponential_pipeline = pipelines::expfunct::Pipeline::new::<f32>(anchor, (
+                &activation_uniforms,
+                &batchshift_pipeline.output_buffer,
+            ),
+            self.output_dimension,
+            batch_size,
+        );
+
+        //Run exponential pipeline
+        exponential_pipeline.run(encoder, self.output_dimension, batch_size);
+
+        //Create denominator pipeline
+        let denominator_pipeline = pipelines::batchtotal::Pipeline::new::<f32>(anchor, (
+                &activation_uniforms,
+                &exponential_pipeline.output_buffer,
+            ),
+            self.output_dimension,
+            batch_size,
+        );
+
+        //Run denominator pipeline
+        denominator_pipeline.run(encoder, self.output_dimension, batch_size);
+
+        //Run softmax pipeline
+        let softmax_pipeline = pipelines::dividebatchbyvector::Pipeline::new::<f32>(anchor, (
+                &activation_uniforms,
+                &exponential_pipeline.output_buffer,
+                &denominator_pipeline.output_buffer,
+            ),
+            self.output_dimension,
+            batch_size,
+        );
+
+        //Run softmax pipeline
+        softmax_pipeline.run(encoder, self.output_dimension, batch_size);
         
         //Create activationprime pipeline
-        let activationprime_pipeline = pipelines::leakyreluprime::Pipeline::new::<f32>(anchor, (
+        let activationprime_pipeline = pipelines::softmaxprime::Pipeline::new::<f32>(anchor, (
                 &activation_uniforms,
+                &softmax_pipeline.output_buffer,
                 &weight_pipeline.output_buffer,
             ),
             self.output_dimension,
@@ -239,7 +340,7 @@ impl super::NetworkLayer for Denselayer {
         vec.push(activationprime_pipeline.output_buffer);
 
         //Return
-        (activation_pipeline.output_buffer, vec)
+        (softmax_pipeline.output_buffer, vec)
     }
 
     fn backprop(&self,

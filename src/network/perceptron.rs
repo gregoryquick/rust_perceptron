@@ -14,7 +14,7 @@ pub struct Network {
 }
 
 impl Network {
-    pub fn new(input_size: usize, layer_types: Vec<super::LayerType>) -> Self {
+    pub fn new(input_size: usize, layer_types: Vec<super::LayerType>, cost: super::CostFunction) -> Self {
         let mut layers: Vec<Box<dyn layers::NetworkLayer>> = Vec::new();
         let mut current_output: usize = input_size;
 
@@ -24,7 +24,7 @@ impl Network {
             current_output = output_size;
         }
         
-        let cost_function = cost::generate_cost(current_output, super::CostFunction::SquaredError);
+        let cost_function = cost::generate_cost(current_output, cost);
 
         Network {
             layers,
@@ -118,7 +118,8 @@ impl Network {
                                   prediction: &wgpu::Buffer,
                                   labels: &Vec<T>,
                                   anchor: &pipelines::Device,
-                                  batch_size: usize,) -> wgpu::Buffer {
+                                  batch_size: usize,
+                                  take_mean: bool) -> wgpu::Buffer {
         let queue = &anchor.queue;
         let device = &anchor.device;
 
@@ -139,19 +140,51 @@ impl Network {
         );
 
         //Compute cost
-        let cost = self.cost_function.cost(
+        let item_costs = self.cost_function.cost(
             &prediction,
             &label_buffer,
             &anchor,
             &mut encoder,
             batch_size,
         );
+        match take_mean {
+            true =>{
+                //Create mean pipeline
+                let mean_uniforms = {
+                    let uniform_data = [1 as u32, batch_size as u32];
+                    device.create_buffer_init(
+                        &BufferInitDescriptor {
+                            label: Some("Uniform Buffer"),
+                            contents: bytemuck::bytes_of(&uniform_data),
+                            usage: wgpu::BufferUsages::UNIFORM,
+                        }
+                    )
+                };
+                let mean_pipeline = pipelines::batchmean::Pipeline::new::<f32>(anchor, (
+                        &mean_uniforms,
+                        &item_costs,
+                    ),
+                    1,
+                    batch_size,
+                );
 
-        //Submit encoder
-        queue.submit(Some(encoder.finish()));
+                //Run mean pipeline
+                mean_pipeline.run(&mut encoder, 1, batch_size);
+                             
+                //Submit encoder
+                queue.submit(Some(encoder.finish()));
 
-        //Return
-        cost
+                //Return
+                mean_pipeline.output_buffer
+            },
+            false =>{
+                //Submit encoder
+                queue.submit(Some(encoder.finish()));
+
+                //Return
+                item_costs
+            },
+        }
     }
     
     pub fn backprop<T: bytemuck::Pod>(&self,

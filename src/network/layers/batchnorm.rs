@@ -527,7 +527,14 @@ impl super::NetworkLayer for Batchnorm {
         //Update mutable values
         *data_mean = mean_update_pipeline.output_buffer;
         *data_var = var_update_pipeline.output_buffer;
-        *batches_sampled = sample_update_pipeline.output_buffer;
+        //Commenting this causes only latest batch to be used for info.
+        //This is commented as the training was prone to exploding due to
+        //using accurate sampling.
+        //This is probably due to early data being highly divergent
+        //from later data during training with large enough weight
+        //numbers. Exponential weighted moving average might work
+        //better for this.
+        //*batches_sampled = sample_update_pipeline.output_buffer;
         
         //Return
         (bias_pipeline.output_buffer, vec)

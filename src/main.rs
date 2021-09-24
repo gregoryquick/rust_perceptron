@@ -20,8 +20,9 @@ fn main() {
 
     //Create/Load network
     use network::LayerType::*;
-    let generator_topology = vec![Batchnorm, DenseLayer(1024), Batchnorm, DenseLayer(1024), Batchnorm, DenseLayer(output_size), Batchnorm];
-    let mut my_network = network::perceptron::Network::new(28*28, generator_topology);
+    use network::CostFunction::*;
+    let generator_topology = vec![Batchnorm, DenseLayer(1024), Batchnorm, DenseLayer(1024), Batchnorm, Softmax(output_size)];
+    let mut my_network = network::perceptron::Network::new(28*28, generator_topology, CrossEntropy);
     //my_network.save_to_file("weights/network.bin");
     //let mut my_network = network::perceptron::Network::load_from_file("weights/network.bin");
 
@@ -61,26 +62,26 @@ fn main() {
     my_network.backprop::<f32>(&input_data, &label_data, &mut network_data, &anchor, batch_size);
     println!("Prediction 0:");
     let prediction = my_network.feedforward::<f32>(&input_data, &network_data, &anchor, batch_size);
-    let cost = my_network.cost::<f32>(&prediction, &label_data, &anchor, batch_size);
-    println!("{:?}", from_gpu::<f32>(&cost, &anchor, batch_size).unwrap());
+    let cost = my_network.cost::<f32>(&prediction, &label_data, &anchor, batch_size, true);
+    println!("{:?}", from_gpu::<f32>(&cost, &anchor, 1).unwrap());
 
     //Save network
     my_network.save_from_gpu(&anchor, &network_data);
     my_network.save_to_file("weights/network.bin");
 
     //Run training loop
-    for i in 1..20 {
+    for i in 1..100 {
         let network_grads = my_network.backprop::<f32>(&input_data, &label_data, &mut network_data, &anchor, batch_size);
         optimiser.step(&mut network_data, &network_grads, &anchor, &network_topology);
         println!("Prediction {}:", i);
         let prediction = my_network.feedforward::<f32>(&input_data, &network_data, &anchor, batch_size);
-        let cost = my_network.cost::<f32>(&prediction, &label_data, &anchor, batch_size);
-        println!("{:?}", from_gpu::<f32>(&cost, &anchor, batch_size).unwrap());
+        let cost = my_network.cost::<f32>(&prediction, &label_data, &anchor, batch_size, true);
+        println!("{:?}", from_gpu::<f32>(&cost, &anchor, 1).unwrap());
     }
 
     //Save network
-    //my_network.save_from_gpu(&anchor, &network_data);
-    //my_network.save_to_file("weights/network.bin");
+    my_network.save_from_gpu(&anchor, &network_data);
+    my_network.save_to_file("weights/network.bin");
 }
 
 fn to_gpu<T: bytemuck::Pod>(input: &Vec<T>, anchor: &pipelines::Device) -> wgpu::Buffer {

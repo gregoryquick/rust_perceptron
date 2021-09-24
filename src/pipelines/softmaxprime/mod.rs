@@ -5,25 +5,25 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    //Take an 2 m-length vectors of mean and variance of batch and use to compute m x n matrix of the grad of batchnorm with respect to input matrix
+    //Take the m x n softmax values and m x n matrix of inputs to comptue derivitive of softmax
     pub fn new<T: bytemuck::Pod>(anchor: &super::Device,
                                  buffers: (&wgpu::Buffer, // uniform buffer
-                                           &wgpu::Buffer, // m-length vector
-                                           &wgpu::Buffer,),//m-length vector
-                                m_size: usize,
-                                n_size: usize,) -> Self {
+                                           &wgpu::Buffer, // m x n matrix
+                                           &wgpu::Buffer,),//m x n matrix
+                                 m_size: usize,
+                                 n_size: usize,) -> Self {
         let type_size = std::mem::size_of::<T>();
         let device = &anchor.device;
-
-        //Create/load buffers
         
+        //Create/load buffers
+
         let uniform_buffer = buffers.0;
         //0-0
-
-        let gamma_buffer = buffers.1;
+        
+        let softmax_buffer = buffers.1;
         //0-1
-
-        let batch_var = buffers.2;
+        
+        let matrix_buffer = buffers.2;
         //0-2
         
         let output_buffer = device.create_buffer(
@@ -34,12 +34,12 @@ impl Pipeline {
                 mapped_at_creation: false,
             }
         );
-        //1-0
+        //0-3
         
         //Create bind group(s)
         let bind_group_layout_0 = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
-                label: Some("Batchnorm Prime bind group layout 0"),
+                label: Some("Softmax Prime bind group layout 0"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::COMPUTE,
@@ -90,7 +90,7 @@ impl Pipeline {
         );
         let bind_group_0 = device.create_bind_group(
             &wgpu::BindGroupDescriptor {
-                label:  Some("Batchnorm Prime bind group 0"),
+                label:  Some("Softmax Prime bind group 0"),
                 layout: &bind_group_layout_0,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
@@ -98,11 +98,11 @@ impl Pipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: gamma_buffer.as_entire_binding(),
+                    resource: softmax_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: batch_var.as_entire_binding(),
+                    resource: matrix_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
@@ -114,7 +114,7 @@ impl Pipeline {
         //Create compute pipeline
         let cs_src = include_str!("shader.comp");
         let mut compiler = shaderc::Compiler::new().unwrap();
-        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "batchnormprime.comp", "main", None).unwrap();
+        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "softmaxprime.comp", "main", None).unwrap();
         let cs_module = device.create_shader_module(
             &wgpu::ShaderModuleDescriptor {
                 label: None,
@@ -132,7 +132,7 @@ impl Pipeline {
 
         let compute_pipeline = device.create_compute_pipeline(
             &wgpu::ComputePipelineDescriptor {
-                label: Some("Batchnorm Prime pipeline"),
+                label: Some("Softmax Prime pipeline"),
                 layout: Some(&pipeline_layout),
                 module: &cs_module,
                 entry_point: "main",
@@ -150,7 +150,7 @@ impl Pipeline {
         //Create compute pass
         let mut compute_pass = encoder.begin_compute_pass(
             &wgpu::ComputePassDescriptor {
-                label: Some("Batchnorm Prime"),
+                label: Some("Softmax Prime"),
             }
         );
 

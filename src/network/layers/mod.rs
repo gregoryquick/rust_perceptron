@@ -4,6 +4,7 @@ use rand::prelude::*;
 
 pub mod denselayer;
 pub mod batchnorm;
+pub mod softmax;
 
 #[typetag::serde(tag = "type")]
 pub trait NetworkLayer {
@@ -83,6 +84,22 @@ pub fn generate_layer(input_size: usize, layer_type: super::LayerType) -> (usize
 
             //Return
             (input_size, layer)
+        },
+        Softmax(output_size) => {
+            let mut rng = rand::thread_rng();
+            use rand::distributions::Uniform;
+            let dist = Uniform::new(-1.0,1.0);
+            let layer = Box::new(softmax::Softmax {
+                weights:{
+                    let vector: Vec<f32> = (0..input_size * output_size).map(|_i| {rng.sample(dist)}).collect();
+                    vector
+                },
+                output_dimension: output_size,
+                input_dimension: input_size,
+            });
+            
+            //Return
+            (output_size, layer)
         },
     }
 }

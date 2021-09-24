@@ -1,0 +1,33 @@
+#version 450
+layout(set = 0, binding = 0) uniform UniformBuffer {
+    uint max_row_index;
+    uint max_column_index;
+};
+
+layout(set = 0, binding = 1) buffer Prediction {
+    float[] prediction;
+};
+
+layout(set = 0, binding = 2) buffer Ground {
+    float[] ground;
+};
+
+layout(set = 0, binding = 3) buffer Target {
+    float[] target;
+};
+
+float epsilon = 0.0000000001;
+
+float get_element(uint index_of_row, uint index_of_column) {
+    //Prediction: row_size x column_size
+    //Ground: row_size x column_size
+
+    return (-1.0 * ground[index_of_column * max_row_index + index_of_row]) / (prediction[index_of_column * max_row_index + index_of_row] + epsilon);
+}
+
+void main() {
+    uint index_of_row = gl_GlobalInvocationID.x;
+    uint index_of_column = gl_GlobalInvocationID.y;
+    target[index_of_column * max_row_index + index_of_row] = get_element(index_of_row, index_of_column);
+    //: column_size
+}
