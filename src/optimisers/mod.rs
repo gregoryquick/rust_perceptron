@@ -76,7 +76,7 @@ impl Stochasticgradientdescent {
                         learning_rate_pipeline.run(&mut encoder, output_size, input_size);
 
                         //Create update pipeline
-                        let update_pipeline = pipelines::addvectortobatch::Pipeline::new::<f32>(anchor, (
+                        let update_pipeline = pipelines::elementsubtract::Pipeline::new::<f32>(anchor, (
                                 &learning_rate_uniforms,
                                 data,
                                 &learning_rate_pipeline.output_buffer,

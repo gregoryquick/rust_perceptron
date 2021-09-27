@@ -21,11 +21,11 @@ fn main() {
     //Create/Load network
     use network::LayerType::*;
     use network::CostFunction::*;
-    let generator_topology = vec![Batchnorm, DenseLayer(1024), Batchnorm, DenseLayer(1024), Batchnorm, Softmax(output_size)];
-    let mut my_network = network::perceptron::Network::new(28*28, generator_topology, CrossEntropy);
+    let generator_topology = vec![Softmax(output_size)];
+    let mut my_network = network::perceptron::Network::new(28*28, generator_topology, SquaredError);
     //let mut my_network = network::perceptron::Network::load_from_file("weights/network.bin");
 
-    let mut optimiser = optimisers::Stochasticgradientdescent::new(0.01);
+    let mut optimiser = optimisers::Stochasticgradientdescent::new(0.005);
 
     let network_topology = my_network.get_topology();
 
@@ -35,12 +35,16 @@ fn main() {
     //Load network data to gpu
     let mut network_data = my_network.load_to_gpu(&anchor);
 
-    //Run training loop
-    for i in 0..20 {
-        //Get training batch
         let batch = data_set.generate_batch(batch_size);
         let batch_images = batch.get_data();
         let batch_labels = batch.get_labels();
+
+    //Run training loop
+    for i in 0..200 {
+        //Get training batch
+        //let batch = data_set.generate_batch(batch_size);
+        //let batch_images = batch.get_data();
+        //let batch_labels = batch.get_labels();
 
         //Network things
         let network_grads = my_network.backprop::<f32>(&batch_images, &batch_labels, &mut network_data, &anchor, batch_size);

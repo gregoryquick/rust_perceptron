@@ -39,11 +39,11 @@ pub trait NetworkLayer {
 
 pub fn generate_layer(input_size: usize, layer_type: super::LayerType) -> (usize, Box<dyn NetworkLayer>) {
     use super::LayerType::*;
+    use rand_distr::*;
     match layer_type {
         DenseLayer(output_size) => {
             let mut rng = rand::thread_rng();
-            use rand::distributions::Uniform;
-            let dist = Uniform::new(-1.0,1.0);
+            let dist = Normal::new(0.0,1.0).unwrap();
             let layer = Box::new(denselayer::Denselayer {
                 weights:{
                     let vector: Vec<f32> = (0..input_size * output_size).map(|_i| {rng.sample(dist)}).collect();
@@ -58,9 +58,8 @@ pub fn generate_layer(input_size: usize, layer_type: super::LayerType) -> (usize
         },
         Batchnorm => {
             let mut rng = rand::thread_rng();
-            use rand::distributions::Uniform;
-            let dist_var = Uniform::new(0.5,1.5);
-            let dist_mean = Uniform::new(-1.0,1.0);
+            let dist_var = Normal::new(1.0,0.1).unwrap();
+            let dist_mean = Normal::new(0.0,1.0).unwrap();
             let layer = Box::new(batchnorm::Batchnorm {
                 gamma:{
                     let vector: Vec<f32> = (0..input_size).map(|_i| {rng.sample(dist_var)}).collect();
@@ -87,8 +86,7 @@ pub fn generate_layer(input_size: usize, layer_type: super::LayerType) -> (usize
         },
         Softmax(output_size) => {
             let mut rng = rand::thread_rng();
-            use rand::distributions::Uniform;
-            let dist = Uniform::new(-1.0,1.0);
+            let dist = Normal::new(0.0,1.0).unwrap();
             let layer = Box::new(softmax::Softmax {
                 weights:{
                     let vector: Vec<f32> = (0..input_size * output_size).map(|_i| {rng.sample(dist)}).collect();

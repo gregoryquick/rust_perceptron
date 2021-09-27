@@ -1,7 +1,7 @@
 cargo-features = ["edition2021"]
 [package]
 name = "rust_perceptron"
-version = "0.5.12"
+version = "0.5.13"
 authors = ["gregoryquick <gregory@quicks.me>"]
 edition = "2021"
 
@@ -17,5 +17,6 @@ bytemuck = "1.5"
 env_logger = "0.9"
 shaderc = "0.7"
 rand = "0.8"
+rand_distr = "0.4"
 futures = "0.3"
 wgpu = {version = "0.10", features = ["spirv"]}

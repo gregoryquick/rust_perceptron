@@ -12,11 +12,11 @@ layout(set = 0, binding = 2) buffer Target {
     float[] target;
 };
 
-float get_element(uint index_of_row) {
+float get_element(uint index_of_column) {
     //Matrix: row_size x column_size
     float value = 0.0;
     bool no_value_set = true;
-    for(uint index_of_column = 0; index_of_column < max_column_index; index_of_column++) {
+    for(uint index_of_row = 0; index_of_row < max_row_index; index_of_row++) {
         float x = matrix[index_of_column * max_row_index + index_of_row];
         if(x > value) {
             value = x;
@@ -30,7 +30,7 @@ float get_element(uint index_of_row) {
 }
 
 void main() {
-    uint index_of_row = gl_GlobalInvocationID.x;
-    target[index_of_row] = get_element(index_of_row);
-    //target: row_size
+    uint index_of_column = gl_GlobalInvocationID.x;
+    target[index_of_column] = get_element(index_of_column);
+    //target: column_size
 }

@@ -5,12 +5,12 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    //Take an m x n matrix and compute m-length vector of max values along n
+    //Take an m x n matrix and compute n-length vector of max values along m
     pub fn new<T: bytemuck::Pod>(anchor: &super::Device,
                                  buffers: (&wgpu::Buffer, // uniform buffer
                                            &wgpu::Buffer),// m x n matrix
-                                 m_size: usize,
-                                 _n_size: usize,) -> Self {
+                                 _m_size: usize,
+                                 n_size: usize,) -> Self {
         let type_size = std::mem::size_of::<T>();
         let device = &anchor.device;
         
@@ -25,7 +25,7 @@ impl Pipeline {
         let output_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("Output buffer"),
-                size: (type_size * m_size) as wgpu::BufferAddress,
+                size: (type_size * n_size) as wgpu::BufferAddress,
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
                 mapped_at_creation: false,
             }
@@ -126,7 +126,7 @@ impl Pipeline {
         }
     }
 
-    pub fn run(&self, encoder: &mut wgpu::CommandEncoder, m_size: usize, _n_size: usize,) {
+    pub fn run(&self, encoder: &mut wgpu::CommandEncoder, _m_size: usize, n_size: usize,) {
         //Create compute pass
         let mut compute_pass = encoder.begin_compute_pass(
             &wgpu::ComputePassDescriptor {
@@ -136,7 +136,7 @@ impl Pipeline {
 
         compute_pass.set_pipeline(&self.compute_pipeline);
         compute_pass.set_bind_group(0, &self.bind_group_0, &[]);
-        //Work groups of X = m_size, Y = 1, Z = 1
-        compute_pass.dispatch(m_size as u32, 1, 1);
+        //Work groups of X = n_size, Y = 1, Z = 1
+        compute_pass.dispatch(n_size as u32, 1, 1);
     }
 }
