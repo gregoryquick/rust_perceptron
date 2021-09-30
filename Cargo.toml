@@ -1,7 +1,7 @@
 cargo-features = ["edition2021"]
 [package]
 name = "rust_perceptron"
-version = "0.5.13"
+version = "0.5.14"
 authors = ["gregoryquick <gregory@quicks.me>"]
 edition = "2021"
 

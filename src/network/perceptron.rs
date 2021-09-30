@@ -253,7 +253,7 @@ impl Network {
             &mut encoder,
             batch_size,
         );
-        
+
         let backprop_values = {
             let mut vec: Vec<Vec<Option<wgpu::Buffer>>> = Vec::new();
             for ((layer, layer_data), intermediate_data) in backprop_iter {
@@ -268,9 +268,10 @@ impl Network {
                 vec.push(layer_grads);
                 backprop_grad = layer_input_grad;
             }
+            vec.reverse();
             vec
         };
-
+        
         //Submit encoder
         queue.submit(Some(encoder.finish()));
 

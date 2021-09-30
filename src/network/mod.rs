@@ -3,9 +3,10 @@ mod cost;
 pub mod perceptron;
 
 pub enum LayerType {
-    DenseLayer(usize),
+    FullyConnected(usize),
     Batchnorm,
-    Softmax(usize)
+    Relu,
+    Softmax,
 }
 
 pub enum CostFunction {

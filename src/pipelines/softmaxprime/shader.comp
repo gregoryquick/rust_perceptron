@@ -16,21 +16,15 @@ layout(set = 0, binding = 3) buffer Target {
     float[] target;
 };
 
-float delta(uint i, uint j) {
-    if(i == j) {
-        return 1.0;
-    }
-    return 0.0;
-}
-
 float get_element(uint index_of_row, uint index_of_column) {
     //Softmax: row_size x column_size
     //Matrix: row_size x column_size
     float accumulator = 0.0;
+    float p_i = softmax[index_of_column * max_row_index + index_of_row];
     for(uint k = 0; k < max_row_index; k++) {
-        accumulator += softmax[index_of_column * max_row_index + index_of_row]
-            * (delta(k, index_of_row) - softmax[index_of_column * max_row_index + k])
-            * matrix[index_of_column * max_row_index + k];
+        float p_k = softmax[index_of_column * max_row_index + k];
+        float x_k = matrix[index_of_column * max_row_index + k];
+        accumulator += k == index_of_row ? p_i * (1.0 - p_k) * x_k : p_i * (0.0 - p_k) * x_k; 
     }
     return accumulator;
 }

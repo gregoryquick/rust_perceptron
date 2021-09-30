@@ -2,8 +2,9 @@ use crate::pipelines;
 
 use rand::prelude::*;
 
-pub mod denselayer;
+pub mod fullyconnected;
 pub mod batchnorm;
+pub mod relu;
 pub mod softmax;
 
 #[typetag::serde(tag = "type")]
@@ -41,10 +42,11 @@ pub fn generate_layer(input_size: usize, layer_type: super::LayerType) -> (usize
     use super::LayerType::*;
     use rand_distr::*;
     match layer_type {
-        DenseLayer(output_size) => {
+        FullyConnected(output_size) => {
             let mut rng = rand::thread_rng();
-            let dist = Normal::new(0.0,1.0).unwrap();
-            let layer = Box::new(denselayer::Denselayer {
+            let avg: f32 = (input_size + output_size) as f32/2.0;
+            let dist = Normal::new(0.0,1.0/avg).unwrap();
+            let layer = Box::new(fullyconnected::FullyConnected {
                 weights:{
                     let vector: Vec<f32> = (0..input_size * output_size).map(|_i| {rng.sample(dist)}).collect();
                     vector
@@ -84,20 +86,21 @@ pub fn generate_layer(input_size: usize, layer_type: super::LayerType) -> (usize
             //Return
             (input_size, layer)
         },
-        Softmax(output_size) => {
-            let mut rng = rand::thread_rng();
-            let dist = Normal::new(0.0,1.0).unwrap();
+        Relu => {
+            let layer = Box::new(relu::Relu {
+                dimension: input_size,
+            });
+
+            //Return
+            (input_size, layer)
+        },
+        Softmax => {
             let layer = Box::new(softmax::Softmax {
-                weights:{
-                    let vector: Vec<f32> = (0..input_size * output_size).map(|_i| {rng.sample(dist)}).collect();
-                    vector
-                },
-                output_dimension: output_size,
-                input_dimension: input_size,
+                dimension: input_size,
             });
             
             //Return
-            (output_size, layer)
+            (input_size, layer)
         },
     }
 }

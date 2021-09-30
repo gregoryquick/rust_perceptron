@@ -23,7 +23,7 @@ impl Pipeline {
         let prediction_buffer = buffers.1;
         //0-1
 
-        let ground_buffer = buffers.1;
+        let ground_buffer = buffers.2;
         //0-2
 
         

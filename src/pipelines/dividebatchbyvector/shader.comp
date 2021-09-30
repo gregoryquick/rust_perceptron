@@ -16,16 +16,10 @@ layout(set = 0, binding = 3) buffer Target {
     float[] target;
 };
 
-float epsilon = 0.00000001;
-
-float notzero(float x) {
-    return x < 0.0 ? x - epsilon : x + epsilon;
-} 
-
 float get_element(uint index_of_row, uint index_of_column) {
     //Matrix: row_size x column_size
     //Vector: column_size
-    return matrix[index_of_column * max_row_index + index_of_row] / vector[index_of_row];
+    return matrix[index_of_column * max_row_index + index_of_row] / vector[index_of_column];
 }
 
 void main() {

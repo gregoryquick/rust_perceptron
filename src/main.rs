@@ -21,11 +21,11 @@ fn main() {
     //Create/Load network
     use network::LayerType::*;
     use network::CostFunction::*;
-    let generator_topology = vec![Softmax(output_size)];
-    let mut my_network = network::perceptron::Network::new(28*28, generator_topology, SquaredError);
+    let generator_topology = vec![FullyConnected(output_size), Softmax];
+    let mut my_network = network::perceptron::Network::new(28*28, generator_topology, CrossEntropy);
     //let mut my_network = network::perceptron::Network::load_from_file("weights/network.bin");
 
-    let mut optimiser = optimisers::Stochasticgradientdescent::new(0.005);
+    let mut optimiser = optimisers::Stochasticgradientdescent::new(0.01);
 
     let network_topology = my_network.get_topology();
 
@@ -35,16 +35,12 @@ fn main() {
     //Load network data to gpu
     let mut network_data = my_network.load_to_gpu(&anchor);
 
+    //Run training loop
+    for i in 0..100 {
+        //Get training batch
         let batch = data_set.generate_batch(batch_size);
         let batch_images = batch.get_data();
         let batch_labels = batch.get_labels();
-
-    //Run training loop
-    for i in 0..200 {
-        //Get training batch
-        //let batch = data_set.generate_batch(batch_size);
-        //let batch_images = batch.get_data();
-        //let batch_labels = batch.get_labels();
 
         //Network things
         let network_grads = my_network.backprop::<f32>(&batch_images, &batch_labels, &mut network_data, &anchor, batch_size);
@@ -62,22 +58,22 @@ fn main() {
     my_network.save_to_file("weights/network.bin");
 }
 
-fn to_gpu<T: bytemuck::Pod>(input: &Vec<T>, anchor: &pipelines::Device) -> wgpu::Buffer {
-    let device = &anchor.device;
-
-    //Load data to gpu
-    use wgpu::util::{BufferInitDescriptor, DeviceExt};
-    let input_buffer = device.create_buffer_init(
-        &BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::cast_slice(&input[..]),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        }
-    );
-
-    //Return
-    input_buffer
-}
+//fn to_gpu<T: bytemuck::Pod>(input: &Vec<T>, anchor: &pipelines::Device) -> wgpu::Buffer {
+//    let device = &anchor.device;
+//
+//    //Load data to gpu
+//    use wgpu::util::{BufferInitDescriptor, DeviceExt};
+//    let input_buffer = device.create_buffer_init(
+//        &BufferInitDescriptor {
+//            label: None,
+//            contents: bytemuck::cast_slice(&input[..]),
+//            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+//        }
+//    );
+//
+//    //Return
+//    input_buffer
+//}
 
 fn from_gpu<T: bytemuck::Pod>(buffer: &wgpu::Buffer, anchor: &pipelines::Device, size: usize) -> Option<Vec<T>> {
     let queue = &anchor.queue;

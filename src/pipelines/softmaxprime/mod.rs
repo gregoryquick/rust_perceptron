@@ -5,7 +5,7 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    //Take the m x n softmax values and m x n matrix of inputs to comptue derivitive of softmax
+    //Take the m x n softmax values and m x n matrix of grads to compute input grads of softmax
     pub fn new<T: bytemuck::Pod>(anchor: &super::Device,
                                  buffers: (&wgpu::Buffer, // uniform buffer
                                            &wgpu::Buffer, // m x n matrix

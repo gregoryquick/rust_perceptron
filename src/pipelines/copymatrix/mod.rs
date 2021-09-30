@@ -5,27 +5,22 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    //Take two m x n matrices and compute derivitive of elementwise contribution to cross entropy
+    //Take an m x n matrix and copy it
     pub fn new<T: bytemuck::Pod>(anchor: &super::Device,
                                  buffers: (&wgpu::Buffer, // uniform buffer
-                                           &wgpu::Buffer, // m x n matrix
-                                           &wgpu::Buffer),// m x n matrix
+                                           &wgpu::Buffer), // m x n matrix
                                  m_size: usize,
                                  n_size: usize,) -> Self {
         let type_size = std::mem::size_of::<T>();
         let device = &anchor.device;
         
         //Create/load buffers
-        
+
         let uniform_buffer = buffers.0;
         //0-0
         
-        let prediction_buffer = buffers.1;
+        let matrix_buffer = buffers.1;
         //0-1
-
-        let ground_buffer = buffers.2;
-        //0-2
-
         
         let output_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -35,12 +30,12 @@ impl Pipeline {
                 mapped_at_creation: false,
             }
         );
-        //0-3
+        //0-2
         
         //Create bind group(s)
         let bind_group_layout_0 = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
-                label: Some("Cross Entropy Prime bind group layout 0"),
+                label: Some("Copy Matrix bind group layout 0"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::COMPUTE,
@@ -74,24 +69,12 @@ impl Pipeline {
                         min_binding_size: wgpu::BufferSize::new(0),
                     },
                     count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage {
-                            read_only: false,
-                        },
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(0),
-                    },
-                    count: None,
                 },],
             }
         );
         let bind_group_0 = device.create_bind_group(
             &wgpu::BindGroupDescriptor {
-                label:  Some("Cross Entropy Prime bind group 0"),
+                label:  Some("Copy Matrix bind group 0"),
                 layout: &bind_group_layout_0,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
@@ -99,14 +82,10 @@ impl Pipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: prediction_buffer.as_entire_binding(),
+                    resource: matrix_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: ground_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
                     resource: output_buffer.as_entire_binding(),
                 },],
             }
@@ -115,7 +94,7 @@ impl Pipeline {
         //Create compute pipeline
         let cs_src = include_str!("shader.comp");
         let mut compiler = shaderc::Compiler::new().unwrap();
-        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "crossentropyprime.comp", "main", None).unwrap();
+        let cs_spirv = compiler.compile_into_spirv(cs_src, shaderc::ShaderKind::Compute, "copymatrix.comp", "main", None).unwrap();
         let cs_module = device.create_shader_module(
             &wgpu::ShaderModuleDescriptor {
                 label: None,
@@ -133,7 +112,7 @@ impl Pipeline {
 
         let compute_pipeline = device.create_compute_pipeline(
             &wgpu::ComputePipelineDescriptor {
-                label: Some("Cross Entropy Prime pipeline"),
+                label: Some("Copy Matrix pipeline"),
                 layout: Some(&pipeline_layout),
                 module: &cs_module,
                 entry_point: "main",
@@ -151,7 +130,7 @@ impl Pipeline {
         //Create compute pass
         let mut compute_pass = encoder.begin_compute_pass(
             &wgpu::ComputePassDescriptor {
-                label: Some("Cross Entropy Prime"),
+                label: Some("Copy Matrix"),
             }
         );
 

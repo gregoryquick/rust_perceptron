@@ -1,0 +1,20 @@
+#version 450
+layout(set = 0, binding = 0) uniform UniformBuffer {
+    uint max_row_index;
+    uint max_column_index;
+};
+
+layout(set = 0, binding = 1) buffer Matrix {
+    float[] matrix;
+};
+
+layout(set = 0, binding = 2) buffer Target {
+    float[] target;
+};
+
+void main() {
+    uint index_of_row = gl_GlobalInvocationID.x;
+    uint index_of_column = gl_GlobalInvocationID.y;
+    target[index_of_column * max_row_index + index_of_row] = matrix[index_of_column * max_row_index + index_of_row];
+    //target: row_size x column_size
+}

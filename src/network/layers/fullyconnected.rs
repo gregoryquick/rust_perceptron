@@ -5,14 +5,14 @@ use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use futures::executor::block_on;
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Denselayer {
+pub struct FullyConnected {
     pub weights: Vec<f32>,
     pub output_dimension: usize,
     pub input_dimension: usize,
 }
 
 #[typetag::serde]
-impl super::NetworkLayer for Denselayer {
+impl super::NetworkLayer for FullyConnected {
     fn get_topology(&self) -> Vec<(usize, usize)> {
         let mut vec: Vec<(usize, usize)> = Vec::with_capacity(1);
         vec.push((self.output_dimension, self.input_dimension));
@@ -136,31 +136,8 @@ impl super::NetworkLayer for Denselayer {
         //Run weight pipeline
         weight_pipeline.run(encoder, self.output_dimension, self.input_dimension, batch_size);
 
-        //Create activation pipeline
-        let activation_uniforms = {
-            let uniform_data = [self.output_dimension as u32, batch_size as u32,];
-            device.create_buffer_init(
-                &BufferInitDescriptor {
-                    label: Some("Uniform Buffer"),
-                    contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsages::UNIFORM,
-                }
-            )
-        };
-        
-        let activation_pipeline = pipelines::leakyrelu::Pipeline::new::<f32>(anchor, (
-                &activation_uniforms,
-                &weight_pipeline.output_buffer,
-            ),
-            self.output_dimension,
-            batch_size,
-        );
-
-        //Run activation pipeline
-        activation_pipeline.run(encoder, self.output_dimension, batch_size);
-
         //Return
-        activation_pipeline.output_buffer
+        weight_pipeline.output_buffer
     }
 
     fn forward_for_backprop(&self, 
@@ -199,47 +176,11 @@ impl super::NetworkLayer for Denselayer {
         //Run weight pipeline
         weight_pipeline.run(encoder, self.output_dimension, self.input_dimension, batch_size);
 
-        //Create activation pipeline
-        let activation_uniforms = {
-            let uniform_data = [self.output_dimension as u32, batch_size as u32,];
-            device.create_buffer_init(
-                &BufferInitDescriptor {
-                    label: Some("Uniform Buffer"),
-                    contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsages::UNIFORM,
-                }
-            )
-        };
-        
-        let activation_pipeline = pipelines::leakyrelu::Pipeline::new::<f32>(anchor, (
-                &activation_uniforms,
-                &weight_pipeline.output_buffer,
-            ),
-            self.output_dimension,
-            batch_size,
-        );
-
-        //Run activation pipeline
-        activation_pipeline.run(encoder, self.output_dimension, batch_size);
-        
-        //Create activationprime pipeline
-        let activationprime_pipeline = pipelines::leakyreluprime::Pipeline::new::<f32>(anchor, (
-                &activation_uniforms,
-                &weight_pipeline.output_buffer,
-            ),
-            self.output_dimension,
-            batch_size,
-        );
-
-        //Run activationprime pipeline
-        activationprime_pipeline.run(encoder, self.output_dimension, batch_size);
-
         //Create vec for return
-        let mut vec: Vec<wgpu::Buffer> = Vec::with_capacity(2);
-        vec.push(activationprime_pipeline.output_buffer);
+        let mut vec: Vec<wgpu::Buffer> = Vec::with_capacity(1);
 
         //Return
-        (activation_pipeline.output_buffer, vec)
+        (weight_pipeline.output_buffer, vec)
     }
 
     fn backprop(&self,
@@ -255,32 +196,7 @@ impl super::NetworkLayer for Denselayer {
         let layer_weights = gpu_data.next().unwrap();
 
         let mut gpu_data = backprop_data.into_iter();
-        let layer_outputprime = gpu_data.next().unwrap();
         let layer_input = gpu_data.next().unwrap();
-
-        //Create backprop_error pipeline
-        let backprop_error_uniforms = {
-            let uniform_data = [self.output_dimension as u32, batch_size as u32];
-            device.create_buffer_init(
-                &BufferInitDescriptor {
-                    label: Some("Uniform Buffer"),
-                    contents: bytemuck::bytes_of(&uniform_data),
-                    usage: wgpu::BufferUsages::UNIFORM,
-                }
-            )
-        };
-
-        let backprop_error_pipeline = pipelines::elementmultiply::Pipeline::new::<f32>(anchor, (
-                &backprop_error_uniforms,
-                layer_outputprime,
-                backprop_grad,
-            ),
-            self.output_dimension,
-            batch_size,
-        );
-
-        //Run backprop_error pipeline
-        backprop_error_pipeline.run(encoder, self.output_dimension, batch_size);
 
         //Create weight_grad pipeline
         let weight_grad_uniforms = {
@@ -296,7 +212,7 @@ impl super::NetworkLayer for Denselayer {
 
         let weight_grad_pipeline = pipelines::multiplybytranspose::Pipeline::new::<f32>(anchor, (
                 &weight_grad_uniforms,
-                &backprop_error_pipeline.output_buffer,
+                backprop_grad,
                 layer_input,
             ),
             self.output_dimension,
@@ -322,7 +238,7 @@ impl super::NetworkLayer for Denselayer {
         let input_grad_pipeline = pipelines::multiplytransposewith::Pipeline::new::<f32>(anchor, (
                 &input_grad_uniforms,
                 layer_weights,
-                &backprop_error_pipeline.output_buffer,
+                backprop_grad,
             ),
             self.input_dimension,
             self.output_dimension,
