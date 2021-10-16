@@ -13,6 +13,7 @@ pub struct Network {
     output_size: usize,
 }
 
+#[allow(dead_code)]
 impl Network {
     pub fn new(input_size: usize, layer_types: Vec<super::LayerType>, cost: super::CostFunction) -> Self {
         let mut layers: Vec<Box<dyn layers::NetworkLayer>> = Vec::new();

@@ -13,19 +13,20 @@ fn main() {
 
     //Global vars
     let output_size: usize = 10;
-    let batch_size: usize = 64;
+    let batch_size: usize = 128;
     
     //Load data
-    let data_set = data::mnist::load_data("train").unwrap();
+    let training_data = data::mnist::load_data("train").unwrap();
+    let test_data = data::mnist::load_data("t10k").unwrap();
 
     //Create/Load network
     use network::LayerType::*;
     use network::CostFunction::*;
-    let generator_topology = vec![FullyConnected(output_size), Softmax];
+    let generator_topology = vec![FullyConnected(128), Relu, FullyConnected(output_size), Softmax];
     let mut my_network = network::perceptron::Network::new(28*28, generator_topology, CrossEntropy);
     //let mut my_network = network::perceptron::Network::load_from_file("weights/network.bin");
 
-    let mut optimiser = optimisers::Stochasticgradientdescent::new(0.01);
+    let mut optimiser = optimisers::Stochasticgradientdescent::new(0.001);
 
     let network_topology = my_network.get_topology();
 
@@ -36,21 +37,35 @@ fn main() {
     let mut network_data = my_network.load_to_gpu(&anchor);
 
     //Run training loop
-    for i in 0..100 {
-        //Get training batch
-        let batch = data_set.generate_batch(batch_size);
-        let batch_images = batch.get_data();
-        let batch_labels = batch.get_labels();
+    for i in 0..1 {
+        let mut j = 0;
+        //Break epoc into batches
+        for batch in training_data.generate_epoc(batch_size).into_iter() {
+            println!("Epoc: {}, Batch: {}", i, j);
+            j += 1;
+            let batch_images = batch.get_data();
+            let batch_labels = batch.get_labels();
+            
+            //Step optimization
+            let network_grads = my_network.backprop::<f32>(&batch_images, &batch_labels, &mut network_data, &anchor, batch.get_size());
+            optimiser.step(&mut network_data, &network_grads, &anchor, &network_topology);
 
-        //Network things
-        let network_grads = my_network.backprop::<f32>(&batch_images, &batch_labels, &mut network_data, &anchor, batch_size);
-        optimiser.step(&mut network_data, &network_grads, &anchor, &network_topology);
+            //Get test batch
+            let test_batch = test_data.generate_batch(batch_size);
+            let batch_images = test_batch.get_data();
+            let batch_labels = test_batch.get_labels();
 
-        //Compute cost
-        println!("Prediction {}:", i);
-        let prediction = my_network.feedforward::<f32>(&batch_images, &network_data, &anchor, batch_size);
-        let cost = my_network.cost::<f32>(&prediction, &batch_labels, &anchor, batch_size, true);
-        println!("{:?}", from_gpu::<f32>(&cost, &anchor, 1).unwrap());
+            //Compute cost
+            let prediction = my_network.feedforward::<f32>(&batch_images, &network_data, &anchor, batch_size);
+            let cost = my_network.cost::<f32>(&prediction, &batch_labels, &anchor, batch_size, true);
+            println!("Cost: {:?}", from_gpu::<f32>(&cost, &anchor, 1).unwrap());
+        
+            //Show sample prediction with ground truth for it
+            println!("{:?}", from_gpu::<f32>(&prediction, &anchor, output_size).unwrap());
+            println!("{:?}", batch_labels.get(0..output_size));
+
+        }
+        //End epoc
     }
 
     //Save network

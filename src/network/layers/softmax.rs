@@ -11,6 +11,7 @@ pub struct Softmax {
 #[typetag::serde]
 impl super::NetworkLayer for Softmax {
     fn get_topology(&self) -> Vec<(usize, usize)> {
+        #[allow(unused_mut)]
         let mut vec: Vec<(usize, usize)> = Vec::with_capacity(0);
         
         //Return
@@ -18,14 +19,15 @@ impl super::NetworkLayer for Softmax {
     }
 
     fn load_to_gpu(&self, anchor: &pipelines::Device,) -> Vec<wgpu::Buffer> {
-        let device = &anchor.device;
+        let _device = &anchor.device;
+        #[allow(unused_mut)]
         let mut vec: Vec<wgpu::Buffer> = Vec::with_capacity(0);
         
         //Return
         return vec;
     }
 
-    fn save_from_gpu(&mut self, anchor: &pipelines::Device, data: &Vec<wgpu::Buffer>) {
+    fn save_from_gpu(&mut self, _anchor: &pipelines::Device, _data: &Vec<wgpu::Buffer>) {
         //Nothing to do
     }
 
@@ -37,7 +39,7 @@ impl super::NetworkLayer for Softmax {
                batch_size: usize,) -> wgpu::Buffer {
         let device = &anchor.device;
         
-        let mut gpu_data = layer_data.into_iter();
+        let mut _gpu_data = layer_data.into_iter();
 
         //Create batchmax pipeline
         let activation_uniforms = {
@@ -124,7 +126,7 @@ impl super::NetworkLayer for Softmax {
                batch_size: usize,) -> (wgpu::Buffer, Vec<wgpu::Buffer>) {
         let device = &anchor.device;
         
-        let mut gpu_data = layer_data.into_iter();
+        let mut _gpu_data = layer_data.into_iter();
 
         //Create batchmax pipeline
         let activation_uniforms = {
@@ -227,11 +229,11 @@ impl super::NetworkLayer for Softmax {
                 batch_size: usize,) -> (wgpu::Buffer, Vec<Option<wgpu::Buffer>>) {
         let device = &anchor.device;
         
-        let mut gpu_data = layer_data.into_iter();
+        let mut _gpu_data = layer_data.into_iter();
 
         let mut gpu_data = backprop_data.into_iter();
         let layer_output = gpu_data.next().unwrap();
-        let layer_input = gpu_data.next().unwrap();
+        let _layer_input = gpu_data.next().unwrap();
 
         //Create backprop_error pipeline
         let input_grad_uniforms = {

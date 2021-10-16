@@ -11,19 +11,21 @@ pub struct Relu {
 #[typetag::serde]
 impl super::NetworkLayer for Relu {
     fn get_topology(&self) -> Vec<(usize, usize)> {
+        #[allow(unused_mut)]
         let mut vec: Vec<(usize, usize)> = Vec::with_capacity(0);
 
         vec
     }
 
     fn load_to_gpu(&self, anchor: &pipelines::Device,) -> Vec<wgpu::Buffer> {
-        let device = &anchor.device;
+        let _device = &anchor.device;
+        #[allow(unused_mut)]
         let mut vec: Vec<wgpu::Buffer> = Vec::with_capacity(0);
 
         return vec;
     }
 
-    fn save_from_gpu(&mut self, anchor: &pipelines::Device, data: &Vec<wgpu::Buffer>) {
+    fn save_from_gpu(&mut self, _anchor: &pipelines::Device, _data: &Vec<wgpu::Buffer>) {
         //Nothing to do
     }
 
@@ -35,7 +37,7 @@ impl super::NetworkLayer for Relu {
                batch_size: usize,) -> wgpu::Buffer {
         let device = &anchor.device;
         
-        let mut gpu_data = layer_data.into_iter();
+        let mut _gpu_data = layer_data.into_iter();
 
         //Create activation pipeline
         let activation_uniforms = {
@@ -72,7 +74,7 @@ impl super::NetworkLayer for Relu {
                batch_size: usize,) -> (wgpu::Buffer, Vec<wgpu::Buffer>) {
         let device = &anchor.device;
         
-        let mut gpu_data = layer_data.into_iter();
+        let mut _gpu_data = layer_data.into_iter();
 
         //Create activation pipeline
         let activation_uniforms = {
@@ -126,11 +128,11 @@ impl super::NetworkLayer for Relu {
                 batch_size: usize,) -> (wgpu::Buffer, Vec<Option<wgpu::Buffer>>) {
         let device = &anchor.device;
         
-        let mut gpu_data = layer_data.into_iter();
+        let mut _gpu_data = layer_data.into_iter();
 
         let mut gpu_data = backprop_data.into_iter();
         let layer_outputprime = gpu_data.next().unwrap();
-        let layer_input = gpu_data.next().unwrap();
+        let _layer_input = gpu_data.next().unwrap();
 
         //Create input_grad pipeline
         let input_grad_uniforms = {

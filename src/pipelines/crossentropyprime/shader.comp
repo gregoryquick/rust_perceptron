@@ -22,7 +22,7 @@ float get_element(uint index_of_row, uint index_of_column) {
     //Prediction: row_size x column_size
     //Ground: row_size x column_size
 
-    return 1.0 * ground[index_of_column * max_row_index + index_of_row] / (prediction[index_of_column * max_row_index + index_of_row] + epsilon);
+    return -1.0 * ground[index_of_column * max_row_index + index_of_row] / float(max_column_index) * (prediction[index_of_column * max_row_index + index_of_row] + epsilon);
 }
 
 void main() {

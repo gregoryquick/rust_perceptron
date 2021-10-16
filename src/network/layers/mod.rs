@@ -44,8 +44,8 @@ pub fn generate_layer(input_size: usize, layer_type: super::LayerType) -> (usize
     match layer_type {
         FullyConnected(output_size) => {
             let mut rng = rand::thread_rng();
-            let avg: f32 = (input_size + output_size) as f32/2.0;
-            let dist = Normal::new(0.0,1.0/avg).unwrap();
+            let avg: f32 = ((input_size + output_size) as f32) / 2.0;
+            let dist = Normal::new(0.0, 1.0 / avg.sqrt()).unwrap();
             let layer = Box::new(fullyconnected::FullyConnected {
                 weights:{
                     let vector: Vec<f32> = (0..input_size * output_size).map(|_i| {rng.sample(dist)}).collect();

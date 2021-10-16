@@ -177,6 +177,7 @@ impl super::NetworkLayer for FullyConnected {
         weight_pipeline.run(encoder, self.output_dimension, self.input_dimension, batch_size);
 
         //Create vec for return
+        #[allow(unused_mut)]
         let mut vec: Vec<wgpu::Buffer> = Vec::with_capacity(1);
 
         //Return

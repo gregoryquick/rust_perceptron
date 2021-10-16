@@ -23,13 +23,27 @@ pub struct DataSet<Data: Clone> {
 }
 
 impl<Data: Clone> DataSet<Data> {
+    pub fn generate_epoc(&self, batch_size: usize) -> Vec<Self> {
+        let mut rng = rand::thread_rng();
+        let mut batch_data: Vec<LabeledData<Data>> = self.data.clone();
+        batch_data.shuffle(&mut rng);
+
+        //Return
+        batch_data.chunks(batch_size).map(|batch_data| {
+            DataSet::<Data> {
+                data: batch_data.to_vec(),
+            }
+        }).collect()
+    }
+
     pub fn generate_batch(&self, batch_size: usize) -> Self {
         let mut rng = rand::thread_rng();
-        let batch_data: Vec<LabeledData<Data>> = self.data[..].choose_multiple(&mut rng, batch_size).cloned().collect();
+        let mut batch_data: Vec<LabeledData<Data>> = self.data[..].choose_multiple(&mut rng, batch_size).cloned().collect();
+        batch_data.shuffle(&mut rng);
 
         //Return
         DataSet::<Data> {
-            data: batch_data
+            data: batch_data,
         }
     }
 
@@ -41,5 +55,9 @@ impl<Data: Clone> DataSet<Data> {
     pub fn get_labels(&self) -> Vec<Data> {
         let batch_labels: Vec<Data> = self.data.iter().map(|item| item.clone().get_labels().into_iter()).flatten().collect();
         batch_labels
+    }
+
+    pub fn get_size(&self) -> usize {
+        self.data.len()
     }
 }
