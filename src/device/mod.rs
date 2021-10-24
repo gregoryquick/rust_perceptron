@@ -1,6 +1,8 @@
 //! Tools for management of device resources and handles
 use anyhow::Result;
 
+pub mod tensor;
+
 /// Type for the information needed to interact with a given device
 pub enum Device {
     Gpu {
@@ -42,7 +44,7 @@ impl Device {
 /// Struct for managing all of the machines devices
 pub struct DevicePool {
     instance: wgpu::Instance,
-    pub devices: Vec<Device>
+    devices: Vec<Device>
 }
 
 
@@ -51,6 +53,7 @@ impl DevicePool {
     pub async fn new() -> Result<Self> {
         let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
         let mut devices: Vec<Device> = Vec::new();
+        devices.push(Device::Cpu);
         devices.push(
             Device::new_gpu(&instance).await?
         );
@@ -58,5 +61,13 @@ impl DevicePool {
             instance,
             devices,
         })
+    }
+
+    pub fn cpu(&self) -> &Device {
+        &self.devices[0]
+    }
+
+    pub fn gpu(&self) -> &Device {
+        &self.devices[1]
     }
 }
