@@ -4,38 +4,43 @@ use anyhow::{Result, anyhow};
 use crate::device::Device;
 
 ///Type for tensor data on any device
-pub enum Tensor<'a> {
-    GPUMatrix {
-        device: &'a Device,
+pub struct Tensor<'a> {
+    pub device: &'a Device,
+    pub interior_data: TensorData,
+    pub shape: (usize, usize),
+    pub stride: (usize, usize),
+}
+
+/// Actual interior tensor data
+pub enum TensorData {
+    GPUData {
         data: wgpu::Buffer,
-        shape: (usize, usize),
-        stride: (usize, usize),
     },
-    CPUMatrix {
-        device: &'a Device,
+    CPUData {
         data: Vec<f32>,
-        shape: (usize, usize),
-        stride: (usize, usize),
     },
 }
 
 impl<'a> Tensor<'a> {
     ///Returns max number of elements in tensor
     pub fn size(&self) -> usize {
-        match self {
-            Tensor::CPUMatrix{shape, ..}
-            | Tensor::GPUMatrix{shape, ..}
-            => {
-                //Return
-                shape.0 * shape.1
-            },
-        }
+        //Return
+        self.shape.0 * self.shape.1
     }
 
     ///Transfers Tensor to new device
     pub async fn to<'b>(self, target_device: &'b Device) -> Result<Tensor<'b>> {
-        match self {
-            Tensor::CPUMatrix{device: src_device, data, shape, stride} => {
+        let size = self.size();
+        
+        let Tensor {
+            device: src_device,
+            interior_data,
+            shape,
+            stride,
+        } = self;
+
+        match interior_data {
+            TensorData::CPUData {data,} => {
                 match src_device {
                     Device::Cpu => {
                         match target_device {
@@ -53,12 +58,14 @@ impl<'a> Tensor<'a> {
 
                                 //Return
                                 Ok(
-                                    Tensor::GPUMatrix {
+                                    Tensor {
                                         device: target_device,
-                                        data: gpu_data,
+                                        interior_data: TensorData::GPUData {
+                                            data: gpu_data,
+                                        },
                                         shape,
                                         stride,
-                                    }
+                                    }                                
                                 )
                             },
                             _ => {
@@ -71,7 +78,7 @@ impl<'a> Tensor<'a> {
                     },
                 }
             },
-            Tensor::GPUMatrix{device: src_device, data, shape, stride} => {
+            TensorData::GPUData {data,} => {
                 match src_device {
                     Device::Gpu{device, queue, ..} => {
                         match target_device {
@@ -86,7 +93,7 @@ impl<'a> Tensor<'a> {
                                 );
 
                                 //Copy data to readable buffer
-                                let size = (type_size * shape.0 * shape.1) as wgpu::BufferAddress;
+                                let size = (type_size * size) as wgpu::BufferAddress;
 
                                 let staging_buffer = device.create_buffer(
                                     &wgpu::BufferDescriptor {
@@ -125,9 +132,11 @@ impl<'a> Tensor<'a> {
 
                                 //Return
                                 Ok(
-                                    Tensor::CPUMatrix {
+                                    Tensor {
                                         device: target_device,
-                                        data: result,
+                                        interior_data: TensorData::CPUData {
+                                            data: result,
+                                        },
                                         shape,
                                         stride,
                                     }
@@ -144,5 +153,7 @@ impl<'a> Tensor<'a> {
                 }
             },
         }
+        //End
     }
 }
+

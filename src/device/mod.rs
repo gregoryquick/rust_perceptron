@@ -63,10 +63,12 @@ impl DevicePool {
         })
     }
 
+    ///Retuns borrow of a cpu device
     pub fn cpu(&self) -> &Device {
         &self.devices[0]
     }
 
+    ///Returns a borrow of a gpu device
     pub fn gpu(&self) -> &Device {
         &self.devices[1]
     }

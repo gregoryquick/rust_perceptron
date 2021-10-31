@@ -6,6 +6,7 @@
     clippy::cast_sign_loss,
     clippy::similar_names,
     clippy::match_wildcard_for_single_variants,
+    clippy::trivially_copy_pass_by_ref,
 )]
 #![allow(
     dead_code,
@@ -14,10 +15,11 @@
 
 use anyhow::{Result};
 
+mod autograd;
 mod data;
 mod device;
 
-use device::tensor::Tensor;
+use device::tensor::{Tensor, TensorData};
 
 /// The main function for the program
 #[tokio::main]
@@ -45,27 +47,35 @@ async fn main() -> Result<()> {
         let gpu = device_pool.gpu();
 
         //Tensor!
-        let data = Tensor::CPUMatrix{
-            device: gpu,
-            data: vec![1.0,0.0,0.0,1.0],
+        let test_tensor = Tensor {
+            device: cpu,
+            interior_data: TensorData::CPUData{
+                data: vec![1.0,0.0,0.0,1.0],
+            },
             shape: (2, 2),
             stride: (2, 1),
         };
         
-        let data = data.to(gpu).await?;
+        let test_tensor = test_tensor.to(gpu).await?;
 
-        let data = data.to(cpu).await?;
+        //let test_tensor = test_tensor.to(cpu).await?;
 
         //Print some tensor info
-        match data {
-             Tensor::CPUMatrix{data, ..} => {
+        match &test_tensor.interior_data {
+             TensorData::CPUData{data, ..} => {
                  println!("{:?}", data);
              },
-             Tensor::GPUMatrix{..} => {
-                 println!("{}", data.size());
+             TensorData::GPUData{..} => {
+                 println!("{}", test_tensor.size());
              },
         };
 
+        //Graph things
+        let dummy_connections = vec![(0, 2), (1, 2), (1, 0), (2, 3), (3, 4)];
+        let graph = autograd::ComputeGraph::dummy_new(gpu, dummy_connections);
+
+        graph.dummy_test();
+        
         //Recive instructions
         loop {
             println!("received = {:?}", rx.recv().await?);
@@ -83,7 +93,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Message for comunication between client and proccesor
+/// Message for comunication between client and processor
 #[derive(Debug, Clone)]
 #[allow(clippy::upper_case_acronyms)]
 enum Message {
