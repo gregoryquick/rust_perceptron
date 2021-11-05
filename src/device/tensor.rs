@@ -3,12 +3,16 @@ use anyhow::{Result, anyhow};
 
 use crate::device::Device;
 
+///Types for shape and stride
+pub type Shape = (usize, usize);
+pub type Stride = (usize, usize);
+
 ///Type for tensor data on any device
 pub struct Tensor<'a> {
     pub device: &'a Device,
     pub interior_data: TensorData,
-    pub shape: (usize, usize),
-    pub stride: (usize, usize),
+    pub shape: Shape,
+    pub stride: Stride,
 }
 
 /// Actual interior tensor data
