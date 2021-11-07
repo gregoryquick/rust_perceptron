@@ -5,7 +5,6 @@ use crate::device::{Device, tensor::Tensor};
 pub mod graph;
 pub mod matrix_operations;
 pub mod tensor;
-pub mod output;
 
 /// The ID for a node in the graph
 pub type Idx = usize;
@@ -17,12 +16,6 @@ pub trait Operation<'a> {
 
     /// Bind an input socket to a chosen output socket
     fn set_bind(&mut self, socket: usize, bind_src: (Idx, usize)) -> Result<()>;
-
-    /// Returns bools to indicate which outputs are used
-    fn output_used(&self) -> Vec<bool>;
-
-    /// Set if a given socket is used or not
-    fn set_used(&mut self, socket: usize, is_usued: bool) -> Result<()>;
 
     /// Takes slice of references to input operations output tensors
     /// to perform forward propogation and return new values if aplicable

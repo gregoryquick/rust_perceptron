@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
 
-use crate::device::Device;
+use crate::device::{Device, tensor::Tensor};
 use crate::autograd::{Operation, Idx};
 
 /// Graph of the actual computation
@@ -70,10 +70,7 @@ impl<'a> ComputeGraph<'a> {
         if let Some(..) = input_binds.get(trg_socket).unwrap() {
             return Err(anyhow!("Socket {} on operation {} already bound", trg_socket, trg_id))
         }
-        //Set src info
-        let src = &mut self.operations[src_id];
-        src.set_used(src_socket, true)?;
-
+        
         //Set binding info
         let trg = &mut self.operations[trg_id];
         trg.set_bind(trg_socket, (src_id, src_socket))?;
@@ -119,6 +116,22 @@ impl<'a> ComputeGraph<'a> {
             //End
         }
         Ok(())
+    }
+
+    ///Returns clones of values of designated output sockets in order
+    pub fn get_outputs(&self, outputs_to_read: &[(Idx, usize)]) -> Result<Vec<Tensor>> {
+        let to_read = outputs_to_read.into_iter();
+
+        let mut output = Vec::new();
+
+        //Get data
+        for &(id, socket) in to_read {
+            let data = self.operation(id).read_forward()?[socket].clone()?;
+            output.push(data);
+        }
+        
+        //Return
+        Ok(output)
     }
     
     pub fn print_graph(&self) {

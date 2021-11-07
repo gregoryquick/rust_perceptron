@@ -159,5 +159,86 @@ impl<'a> Tensor<'a> {
         }
         //End
     }
+    
+    #[allow(clippy::clone_double_ref, clippy::clone_on_copy)]
+    pub fn clone(&self) -> Result<Self> {
+        let size = self.size();
+        
+        let Tensor {
+            device,
+            interior_data,
+            ..
+        } = self;
+
+        
+        match interior_data {
+            TensorData::CPUData {data,} => {
+                match device {
+                    Device::Cpu => {
+                        //Return
+                        Ok(Tensor {
+                            device: self.device.clone(),
+                            interior_data: TensorData::CPUData{
+                                data: data.clone(),
+                            },
+                            shape: self.shape.clone(),
+                            stride: self.stride.clone(),
+                        })
+                    },
+                    _ => {
+                        Err(anyhow!("Tensor format does not match device!"))
+                    },
+                }
+            },
+            TensorData::GPUData {data,} => {
+                match device {
+                    Device::Gpu{device, queue, ..} => {
+                        let type_size = std::mem::size_of::<f32>();
+
+                        //Create buffer for new tensor
+                        let output_buffer = device.create_buffer(
+                            &wgpu::BufferDescriptor {
+                                label: None,
+                                size: (type_size * size) as wgpu::BufferAddress,
+                                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+                                mapped_at_creation: false,
+                            }
+                        );
+                        
+                        //Create command buffer encoder
+                        let mut encoder = device.create_command_encoder(
+                            &wgpu::CommandEncoderDescriptor {
+                                label: None,
+                            }
+                        );
+
+                        //Copy buffer to new tensors buffer
+                        encoder.copy_buffer_to_buffer(
+                            data, 0,
+                            &output_buffer, 0,
+                            (type_size * size) as wgpu::BufferAddress,
+                        );
+                        
+                        queue.submit(Some(encoder.finish()));
+
+                        //Return
+                        Ok(Tensor {
+                            device: self.device.clone(),
+                            interior_data: TensorData::GPUData{
+                                data: output_buffer,
+                            },
+                            shape: self.shape.clone(),
+                            stride: self.stride.clone(),
+                        })
+                    },
+                    _ => {
+                        Err(anyhow!("Tensor format does not match device!"))
+                    },
+                }
+            },
+        }
+        //End
+    }
 }
+
 

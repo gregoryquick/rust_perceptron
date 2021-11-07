@@ -6,7 +6,6 @@ use crate::gpu;
 
 /// Struct for tensor output
 pub struct MatrixAdd<'a> {
-    output_used: Vec<bool>,    
     input_binding: Vec<Option<(Idx, usize)>>,
     last_output: Option<Vec<Tensor<'a>>>,
     grad: Option<Tensor<'a>>,
@@ -16,7 +15,6 @@ pub struct MatrixAdd<'a> {
 impl<'a>  MatrixAdd<'a> {
     pub fn new() -> Self {
         Self {
-            output_used: vec![false],
             input_binding: vec![None, None],
             last_output: None,
             grad: None,
@@ -39,26 +37,6 @@ impl<'a> Operation<'a> for MatrixAdd<'a> {
             },
             Some(data) => {
                 *data = Some(bind_src);
-                //Return
-                Ok(())
-            },
-        }
-        //End
-    }
-
-    /// Cannot attach to input sockets in graph
-    fn output_used(&self) -> Vec<bool> {
-        Vec::new()
-    }
-
-    /// No output sockets, throw error
-    fn set_used(&mut self, socket: usize, is_usued: bool) -> Result<()> {
-        match self.output_used.get_mut(socket) {
-            None => {
-                return Err(anyhow!("Socket {} is invalid", socket))
-            },
-            Some(data) => {
-                *data = is_usued;
                 //Return
                 Ok(())
             },
@@ -101,7 +79,20 @@ impl<'a> Operation<'a> for MatrixAdd<'a> {
 
     /// No output sockets, throw error
     fn read_forward(&self) -> Result<Vec<&Tensor>> {
-        Err(anyhow!("No output sockets to read"))
+        match &self.last_output {
+            None => {
+                Err(anyhow!("No forward pass saved"))
+            },
+            Some(data) => {
+                let mut output = Vec::new();
+                for tensor in data.iter() {
+                    output.push(tensor);
+                }
+                //Return
+                Ok(output)
+            },
+        }
+        //End
     }
 
     ///TODO

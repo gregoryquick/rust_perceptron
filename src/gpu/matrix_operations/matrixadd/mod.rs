@@ -4,7 +4,7 @@ use anyhow::{Result, anyhow};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
 use crate::device::Device;
-use crate::device::tensor::Tensor;
+use crate::device::tensor::{Tensor, TensorData};
 use crate::gpu::unpack_borrow;
 
 pub fn forward<'a>(tensor_a: &Tensor,
@@ -44,7 +44,7 @@ pub fn forward<'a>(tensor_a: &Tensor,
             &BufferInitDescriptor {
                 label: Some("Uniform Buffer"),
                 contents: bytemuck::bytes_of(&data),
-                usage: wgpu::BufferUsages::UNIFORM,
+                usage: wgpu::BufferUsages::STORAGE,
             }
         )
     };
@@ -65,19 +65,63 @@ pub fn forward<'a>(tensor_a: &Tensor,
         source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("matrixadd.wgsl"))),
     });
 
-    //Create compute pipline from shader
-    let compute_pipeline = wgpu_device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: None,
-        layout: None,
-        module: &cs_module,
-        entry_point: "main",
-    });
-    
     //Create bind group
-    let bind_group_layout = compute_pipeline.get_bind_group_layout(0);
-    let bind_group = wgpu_device.create_bind_group(&wgpu::BindGroupDescriptor {
+    let bind_group_layout_0 = wgpu_device.create_bind_group_layout(
+        &wgpu::BindGroupLayoutDescriptor {
+            label: None,
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage {
+                        read_only: true,
+                    },
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(0),
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage {
+                        read_only: true,
+                    },
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(0),
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage {
+                        read_only: true,
+                    },
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(0),
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage {
+                        read_only: false,
+                    },
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(0),
+                },
+                count: None,
+            },],
+        }
+    );
+    let bind_group_0 = wgpu_device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: None,
-        layout: &bind_group_layout,
+        layout: &bind_group_layout_0,
         entries: &[wgpu::BindGroupEntry {
             binding: 0,
             resource: tensor_meta_buffer.as_entire_binding(),
@@ -96,6 +140,21 @@ pub fn forward<'a>(tensor_a: &Tensor,
         }],
     });
 
+    //Create compute pipline from shader
+    let pipeline_layout = wgpu_device.create_pipeline_layout(
+        &wgpu::PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &[&bind_group_layout_0],
+            push_constant_ranges: &[],
+        }
+    );
+    let compute_pipeline = wgpu_device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: None,
+        layout: Some(&pipeline_layout),
+        module: &cs_module,
+        entry_point: "main",
+    });
+
     //Create compute pass
     let mut compute_pass = encoder.begin_compute_pass(
         &wgpu::ComputePassDescriptor {
@@ -105,9 +164,19 @@ pub fn forward<'a>(tensor_a: &Tensor,
 
     //Run compute pass
     compute_pass.set_pipeline(&compute_pipeline);
-    compute_pass.set_bind_group(0, &bind_group, &[]);
+    compute_pass.set_bind_group(0, &bind_group_0, &[]);
     compute_pass.dispatch(output_tensor_shape.0 as u32, output_tensor_shape.1 as u32, 1);
     
+    //Assemble output tensor
+    let output_tensor_0 = Tensor {
+        device,
+        interior_data: TensorData::GPUData{
+            data: output_buffer,
+        },
+        shape: output_tensor_shape,
+        stride: output_tensor_stride,
+    };
+    
     //Return
-    Err(anyhow!("matrix_add"))
+    Ok(vec![output_tensor_0])
 }

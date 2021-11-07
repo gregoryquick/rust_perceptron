@@ -5,7 +5,6 @@ use crate::autograd::{Operation, Idx};
 
 /// Struct for tensor variables with no inputs
 pub struct GraphTensor<'a> {
-    output_used: Vec<bool>,
     tensor: Tensor<'a>,
     grad: Option<Tensor<'a>>
 }
@@ -13,7 +12,6 @@ pub struct GraphTensor<'a> {
 impl<'a> GraphTensor<'a> {
     pub fn new(tensor: Tensor<'a>, grad: Option<Tensor<'a>>) -> Self {
         Self {
-            output_used: vec![false],
             tensor,
             grad,
         }
@@ -29,26 +27,6 @@ impl<'a> Operation<'a> for GraphTensor<'a> {
     /// No input sockets, throw error
     fn set_bind(&mut self, socket: usize, bind_src: (Idx, usize)) -> Result<()> {
         Err(anyhow!("No input sockets to set"))
-    }
-    
-    /// Return clone of internal tracker
-    fn output_used(&self) -> Vec<bool> {
-        self.output_used.clone()
-    }
-
-    /// Set the use state of output
-    fn set_used(&mut self, socket: usize, is_usued: bool) -> Result<()> {
-        match self.output_used.get_mut(socket) {
-            None => {
-                return Err(anyhow!("Socket {} is invalid", socket))
-            },
-            Some(data) => {
-                *data = is_usued;
-                //Return
-                Ok(())
-            },
-        }
-        //End
     }
 
     /// Ignore input, value is fixed

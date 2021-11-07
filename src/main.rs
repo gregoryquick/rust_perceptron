@@ -9,6 +9,7 @@
     clippy::match_wildcard_for_single_variants,
     clippy::trivially_copy_pass_by_ref,
     clippy::into_iter_on_ref,
+    clippy::too_many_lines,
 )]
 #![allow(
     dead_code,
@@ -130,6 +131,22 @@ pub async fn graph_stuff() -> Result<()> {
     println!("{:?}", graph.binds());
 
     graph.test()?;
+
+    let outputs_to_read = vec![(addition, 0)];
+
+    let output = graph.get_outputs(&outputs_to_read)?;
+
+    for tensor in output {
+        let cpu_tensor = tensor.to(cpu).await?;
+        match &cpu_tensor.interior_data {
+            TensorData::CPUData{data, ..} => {
+                println!("{:?}", data);
+            },
+            TensorData::GPUData{..} => {
+                println!("{}", cpu_tensor.size());
+            },
+        };
+    }
 
     Ok(())
 }
