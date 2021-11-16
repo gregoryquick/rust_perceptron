@@ -161,7 +161,7 @@ impl<'a> Tensor<'a> {
     }
     
     #[allow(clippy::clone_double_ref, clippy::clone_on_copy)]
-    pub fn clone(&self) -> Result<Self> {
+    pub fn duplicate(&self) -> Result<Tensor<'a>> {
         let size = self.size();
         
         let Tensor {

@@ -5,7 +5,7 @@ use crate::autograd::{Operation, Idx};
 use crate::gpu;
 
 /// Struct for tensor output
-pub struct MatrixAdd<'a> {
+pub struct CrossEntropy<'a> {
     input_binding: Vec<Option<(Idx, usize)>>,
     last_output: Option<Vec<Tensor<'a>>>,
     grad: Option<Tensor<'a>>,
@@ -13,7 +13,7 @@ pub struct MatrixAdd<'a> {
     uses: usize,
 }
 
-impl<'a>  MatrixAdd<'a> {
+impl<'a> CrossEntropy<'a> {
     pub fn new() -> Self {
         Self {
             input_binding: vec![None, None],
@@ -25,7 +25,7 @@ impl<'a>  MatrixAdd<'a> {
     }
 }
 
-impl<'a> Operation<'a> for MatrixAdd<'a> {
+impl<'a> Operation<'a> for CrossEntropy<'a> {
     /// Return clone of binding info
     fn input_binds(&self)-> Vec<Option<(Idx, usize)>> {
         self.input_binding.clone()
@@ -64,7 +64,8 @@ impl<'a> Operation<'a> for MatrixAdd<'a> {
         Ok(())
     }
 
-    /// Take inputs and add them together
+
+    /// Compute cross entropy betwean the inputs
     fn forward(&self, input_data: &[&Tensor], graph_device: &'a Device) -> Result<Option<Vec<Tensor<'a>>>> {
         if input_data.len() != 2 {
             return Err(anyhow!("Malformed input"))
@@ -83,7 +84,7 @@ impl<'a> Operation<'a> for MatrixAdd<'a> {
                     }
                 );
 
-                let output = gpu::matrix_operations::matrixadd::forward(tensor_a, tensor_b, &mut encoder, device, graph_device)?;
+                let output = gpu::cost_functions::crossentropy::forward(tensor_a, tensor_b, &mut encoder, device, graph_device)?;
 
                 queue.submit(Some(encoder.finish()));
 
@@ -102,7 +103,7 @@ impl<'a> Operation<'a> for MatrixAdd<'a> {
         Ok(())
     }
 
-    /// Return reference to saved output if it exists
+    /// Return result if it is saved
     fn read_forward(&self) -> Result<Vec<&Tensor<'a>>> {
         match &self.last_output {
             None => {
@@ -120,17 +121,9 @@ impl<'a> Operation<'a> for MatrixAdd<'a> {
         //End
     }
 
-    ///Grad is enabled if a grad tensor is saved? Should change how this works
+    ///TODO
     fn grads_enabled(&self) -> Vec<bool> {
-        match &self.grad {
-            None => {
-                vec![false]
-            },
-            Some(..) => {
-                vec![true]
-            }
-        }
-        //End
+        vec![true]
     }
 
     ///Write grad if not malformed
@@ -144,7 +137,7 @@ impl<'a> Operation<'a> for MatrixAdd<'a> {
         //Return
         Ok(())
     }
-
+    
     ///Return reference to the grad if it exists
     fn read_grads(&self) -> Result<Vec<Option<&Tensor<'a>>>> {
         match &self.grad {
@@ -159,11 +152,29 @@ impl<'a> Operation<'a> for MatrixAdd<'a> {
         }
         //End
     }
-    
+
     /// TODO
     /// No cost function so how would this be calculated?
-    fn backprop(&self, input_data: &[&Tensor], needs_grad: &[bool], backprop_grads: &[Option<&Tensor>], device: &Device) -> Result<Vec<Option<Tensor<'a>>>> {
-        Err(anyhow!("TODO"))
+    fn backprop(&self, input_data: &[&Tensor], needs_grad: &[bool], backprop_grads: &[Option<&Tensor>], graph_device: &Device) -> Result<Vec<Option<Tensor<'a>>>> {
+        let mut input_data = input_data.into_iter();
+        let tensor_a = input_data.next().unwrap();
+        let tensor_b = input_data.next().unwrap();
+
+        let mut needs_grad = needs_grad.into_iter();
+        let grad_need_a = needs_grad.next().unwrap();
+        let grad_need_b = needs_grad.next().unwrap();
+
+        let mut backprop_grads = backprop_grads.into_iter();
+        let backprop_a = backprop_grads.next().unwrap();
+
+        match graph_device {
+             Device::Gpu{device, queue, ..} => {
+                 Err(anyhow!("TODO"))
+             },
+             _ => {
+                Err(anyhow!("Device not supported for operation"))
+            },
+        }
     }
 
     ///TODO

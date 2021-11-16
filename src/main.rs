@@ -1,5 +1,7 @@
 //! Project to run neural network on gpu using rust
 //! GPU comunication is done using wgpu
+#![feature(slice_group_by)]
+#![feature(drain_filter)]
 #![warn(clippy::pedantic)]
 #![allow(
     clippy::module_name_repetitions,
@@ -53,7 +55,8 @@ async fn main() -> Result<()> {
         
         //Recive instructions
         loop {
-            println!("received = {:?}", rx.recv().await?);
+            rx.recv().await?;
+            //println!("received = {:?}", rx.recv().await?);
         }
         
         //Help compiler know return type is anyhow::Result
@@ -75,80 +78,139 @@ pub async fn graph_stuff() -> Result<()> {
     let gpu = device_pool.gpu();
 
     //Tensors!
-    let dummy_data = Tensor {
+    //Tensor 0
+    let tensor_0 = Tensor {
         device: cpu,
         interior_data: TensorData::CPUData{
             data: vec![
-                1.0,0.0,
-                0.0,1.0,
-                1.0,0.0,
+                0.0,0.1,
+                0.1,0.1,
+                0.0,0.1,
             ],
         },
         shape: (3, 2),
         stride: (2, 1),
     };
-        
-    let dummy_data = dummy_data.to(gpu).await?;
 
-    let dummy_matrix = Tensor {
+    print_tensor(&tensor_0);
+        
+    let tensor_0 = tensor_0.to(gpu).await?;
+
+    //Tensor 1
+    let tensor_1 = Tensor {
         device: cpu,
         interior_data: TensorData::CPUData{
             data: vec![
-            0.0,1.0,
-            1.0,0.0,
-            0.0,1.0,
+            0.0,0.6,
+            0.6,0.0,
+            0.0,0.0,
             ],
         },
         shape: (3, 2),
         stride: (2, 1),
     };
+
+    print_tensor(&tensor_1);
         
-    let dummy_matrix = dummy_matrix.to(gpu).await?;
+    let tensor_1 = tensor_1.to(gpu).await?;
+
+    //Tensor 2
+    let tensor_2 = Tensor {
+        device: cpu,
+        interior_data: TensorData::CPUData{
+            data: vec![
+            0.1,0.1,
+            0.1,0.0,
+            0.1,0.0,
+            ],
+        },
+        shape: (3, 2),
+        stride: (2, 1),
+    };
+
+    print_tensor(&tensor_2);
+        
+    let tensor_2 = tensor_2.to(gpu).await?;
+
+    //Label tensor
+    let tensor_label = Tensor {
+        device: cpu,
+        interior_data: TensorData::CPUData{
+            data: vec![
+            0.1,0.8,
+            0.1,0.1,
+            0.8,0.1,
+            ],
+        },
+        shape: (3, 2),
+        stride: (2, 1),
+    };
+    
+    print_tensor(&tensor_label);
+    
+    let tensor_label = tensor_label.to(gpu).await?;
 
     //Graph things
     let mut graph = autograd::graph::ComputeGraph::new(gpu);
 
-    let data_tensor = graph.add_operation(Box::new(autograd::tensor::GraphTensor::new(dummy_data, None)));
+    let graph_tensor_0 = graph.add_operation(Box::new(autograd::tensor::GraphTensor::new(tensor_0, None)));
         
-    let matrix_tensor = graph.add_operation(Box::new(autograd::tensor::GraphTensor::new(dummy_matrix, None)));
+    let graph_tensor_1 = graph.add_operation(Box::new(autograd::tensor::GraphTensor::new(tensor_1, None)));
+
+    let graph_tensor_2 = graph.add_operation(Box::new(autograd::tensor::GraphTensor::new(tensor_2, None)));
+
+    let graph_tensor_3 = graph.add_operation(Box::new(autograd::tensor::GraphTensor::new(tensor_label, None)));
         
-    let addition = graph.add_operation(Box::new(autograd::matrix_operations::matrixadd::MatrixAdd::new()));
-        
-    //let output_probe = graph.add_operation(Box::new(autograd::output::OutputProbe::new()));
-        
+    let addition_0 = graph.add_operation(Box::new(autograd::matrix_operations::matrixadd::MatrixAdd::new()));
+
+    let addition_1 = graph.add_operation(Box::new(autograd::matrix_operations::matrixadd::MatrixAdd::new()));
+
+    let cross_entropy = graph.add_operation(Box::new(autograd::cost_functions::crossentropy::CrossEntropy::new()));
+    
+    graph.link((graph_tensor_0, 0), (addition_0, 0))?;
+
+    graph.link((graph_tensor_1, 0), (addition_0, 1))?;
+
+    graph.link((addition_0, 0), (addition_1, 0))?;
+
+    graph.link((graph_tensor_2, 0), (addition_1, 1))?;
+
+    graph.link((addition_1, 0), (cross_entropy, 0))?;
+
+    graph.link((graph_tensor_3, 0), (cross_entropy, 1))?;
+
     graph.print_graph();
+    
+    println!("Bindings: {:?}", graph.binds());
 
-    println!("{:?}", graph.binds());
+    //Run graph
+    graph.forward()?;
 
-    //graph.link(addition, output_probe, (0, 0))?;
-
-    graph.link(data_tensor, addition, (0, 0))?;
-
-    graph.link(matrix_tensor, addition, (0, 1))?;
-
-    graph.print_graph();
-
-    println!("{:?}", graph.binds());
-
-    graph.test()?;
-
-    let outputs_to_read = vec![(addition, 0)];
+    let outputs_to_read = vec![(addition_1, 0), (cross_entropy, 0)];
 
     let output = graph.get_outputs(&outputs_to_read)?;
 
     for tensor in output {
         let cpu_tensor = tensor.to(cpu).await?;
-        match &cpu_tensor.interior_data {
-            TensorData::CPUData{data, ..} => {
-                println!("{:?}", data);
-            },
-            TensorData::GPUData{..} => {
-                println!("{}", cpu_tensor.size());
-            },
-        };
+        print_tensor(&cpu_tensor);
     }
 
+    let start_backprop_with = vec![cross_entropy];
+
+    graph.backward(&start_backprop_with)?;
+
     Ok(())
+}
+
+fn print_tensor(tensor: &Tensor) {
+    match &tensor.interior_data {
+        TensorData::CPUData{data, ..} => {
+            println!("{:?}", data);
+        },
+        TensorData::GPUData{..} => {
+            println!("{}", tensor.size());
+        },
+    };
 }
 
 /// Message for comunication between client and processor

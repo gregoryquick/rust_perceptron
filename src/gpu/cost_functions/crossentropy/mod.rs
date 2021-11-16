@@ -23,11 +23,11 @@ pub fn forward<'a>(tensor_a: &Tensor,
     }
 
     //Metadata for output_tensor
-    let data_size = tensor_a_shape.0 * tensor_a_shape.1;
+    let data_size = tensor_a_shape.1;
     let type_size = std::mem::size_of::<f32>();
 
-    let output_tensor_shape = (tensor_a_shape.0, tensor_a_shape.1);
-    let output_tensor_stride = (tensor_a_stride.0, tensor_a_stride.1);
+    let output_tensor_shape = (1, tensor_a_shape.1);
+    let output_tensor_stride = (1, 1);
 
     //Create buffer for tensor metadata
     #[allow(clippy::cast_possible_truncation)]
@@ -37,8 +37,7 @@ pub fn forward<'a>(tensor_a: &Tensor,
             tensor_a_stride.0 as u32, tensor_a_stride.1 as u32,
             tensor_b_shape.0 as u32, tensor_b_shape.1 as u32,
             tensor_b_stride.0 as u32, tensor_b_stride.1 as u32,
-            output_tensor_shape.0 as u32, output_tensor_shape.1 as u32,
-            output_tensor_stride.0 as u32, output_tensor_stride.1 as u32,
+            output_tensor_shape.1 as u32, output_tensor_stride.1 as u32,
         ];
         wgpu_device.create_buffer_init(
             &BufferInitDescriptor {
@@ -62,7 +61,7 @@ pub fn forward<'a>(tensor_a: &Tensor,
     //Load wgsl shader
     let cs_module = wgpu_device.create_shader_module(&wgpu::ShaderModuleDescriptor {
         label: None,
-        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("matrixadd.wgsl"))),
+        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("crossentropy.wgsl"))),
     });
 
     //Create bind group
@@ -165,7 +164,7 @@ pub fn forward<'a>(tensor_a: &Tensor,
     //Run compute pass
     compute_pass.set_pipeline(&compute_pipeline);
     compute_pass.set_bind_group(0, &bind_group_0, &[]);
-    compute_pass.dispatch(output_tensor_shape.0 as u32, output_tensor_shape.1 as u32, 1);
+    compute_pass.dispatch(output_tensor_shape.1 as u32, 1, 1);
     
     //Assemble output tensor
     let output_tensor_0 = Tensor {

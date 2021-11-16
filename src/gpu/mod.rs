@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use crate::device::tensor::{Tensor, TensorData, Shape, Stride};
 
+pub mod cost_functions;
 pub mod matrix_operations;
 
 pub fn unpack_borrow<'a>(tensor_borrow: &'a Tensor) -> Result<(&'a wgpu::Buffer, &'a Shape, &'a Stride)> {
