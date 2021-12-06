@@ -1,75 +1,69 @@
-//! Tools for management of device resources and handles
-use anyhow::Result;
+use std::error::Error;
 
-pub mod tensor;
-
-/// Type for the information needed to interact with a given device
-pub enum Device {
-    Gpu {
-        adapter: wgpu::Adapter,
-        device: wgpu::Device,
-        queue: wgpu::Queue,
-    },
-    Cpu,
-}
-
-impl Device {
-    /// Creates a new gpu device from an instance
-    async fn new_gpu(instance: &wgpu::Instance,) -> Result<Self> {
-        let adapter = instance.request_adapter(
-            &wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            },
-        ).await.unwrap();
-
-        let (device, queue) = adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                features: wgpu::Features::empty(),
-                limits: wgpu::Limits::default(),
-            },
-            None,
-        ).await?;
-
-        Ok(Device::Gpu {
-            adapter,
-            device,
-            queue,
-        })
-    }
-}
-
-/// Struct for managing all of the machines devices
 pub struct DevicePool {
-    instance: wgpu::Instance,
-    devices: Vec<Device>
+    cpu: CPU,
+    gpus: Vec<GPU>,
 }
-
 
 impl DevicePool {
-    /// Creates a new device pool with a gpu
-    pub async fn new() -> Result<Self> {
+    pub async fn new() -> Result<Self, Box<dyn Error>> {
         let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
-        let mut devices: Vec<Device> = Vec::new();
-        devices.push(Device::Cpu);
-        devices.push(
-            Device::new_gpu(&instance).await?
-        );
+        let mut gpus: Vec<GPU> = Vec::new();
+        
+        let mut adapters = instance.enumerate_adapters(wgpu::Backends::PRIMARY).map(make_gpu);
+        while let Some(gpu) = adapters.next() {
+            gpus.push(gpu.await?);
+        }
         Ok(Self {
-            instance,
-            devices,
+            cpu: CPU {},
+            gpus,
         })
     }
 
-    ///Retuns borrow of a cpu device
-    pub fn cpu(&self) -> &Device {
-        &self.devices[0]
+    pub fn cpu(&self) -> &CPU {
+        &self.cpu
     }
 
-    ///Returns a borrow of a gpu device
-    pub fn gpu(&self) -> &Device {
-        &self.devices[1]
+    pub fn gpus(&self) -> Vec<&GPU> {
+        self.gpus.iter().collect()
     }
 }
+
+
+
+///
+pub trait Device {
+}
+
+#[derive(Debug)]
+pub struct GPU {
+    adapter: wgpu::Adapter,
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+}
+
+async fn make_gpu(adapter: wgpu::Adapter,) -> Result<GPU, Box<dyn Error>> {
+    let (device, queue) = adapter.request_device(
+        &wgpu::DeviceDescriptor {
+            label: None,
+            features: wgpu::Features::empty(),
+            limits: wgpu::Limits::default(),
+        },
+        None,
+    ).await?;
+    
+    Ok(GPU {
+        adapter,
+        device,
+        queue,
+    })
+}
+
+impl Device for GPU {
+}
+
+pub struct CPU;
+
+impl Device for CPU {
+}
+
