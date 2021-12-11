@@ -10,6 +10,9 @@
     clippy::too_many_lines,
     clippy::upper_case_acronyms,
     clippy::while_let_on_iterator,
+    clippy::wildcard_imports,
+    clippy::items_after_statements,
+    clippy::clone_on_copy
 )]
 #![allow(
     dead_code,
@@ -22,6 +25,7 @@ use tracing::{span, event, Level};
 
 mod device;
 mod dispatch;
+mod kernel;
 mod tensor;
 
 //use tracing::info;
@@ -48,33 +52,124 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let span = span!(Level::INFO, "Tensors");
     let guard = span.enter();
 
-    let gpu = pool.gpus()[0];
+    use crate::tensor::*;
+
+    let gpu_0 = pool.gpus()[0];
+    let gpu_1 = pool.gpus()[1];
     let cpu = pool.cpu();
 
-    let tensor_0 = tensor::Tensor {
+    let tensor_0 = Tensor {
         device: cpu,
-        tensor_layout: tensor::Strided {
-            strides: [5, 1],
+        tensor_layout: Strided {
+            strides: [64 ,16, 4, 1],
         },
-        shape: [5, 5],
-        data: tensor::TensorData::CPUStrided::<f32>(
+        shape: [4, 4, 4, 4],
+        data: TensorData::CPUStrided::<f32>(
             vec![
-            1.0, 0.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, 1.0, 0.0,
-            0.0, 0.0, 0.0, 0.0, 1.0,
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+
+
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            
+
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+
+
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 1.0,
             ]
         ),
     };
     event!(Level::INFO, "Created a tensor");
 
-    let tensor_a = tensor_0.to_device(gpu).await?;
+    let tensor_a = tensor_0.into_device(gpu_0).await?;
     event!(Level::INFO, "Moved tensor to GPU");
 
     let tensor_b = tensor_a.clone();
-    event!(Level::INFO, "Cloned GPU tensor");
+    event!(Level::INFO, "Cloned tensor");
 
+    let tensor_c = kernel::gpu::matrix_operations::matrix_add::strided::float32::forward(&tensor_a, &tensor_b);
+    event!(Level::INFO, "Added tensors");
+
+    let tensor_1 = tensor_c.into_device(cpu).await?;
+    event!(Level::INFO, "Moved tensor to CPU");
+    
+    use enum_extract::extract;
+    let data = extract!(TensorData::CPUStrided(_), tensor_1.data).unwrap();
+    println!("{:?}", data);
+    event!(Level::INFO, "Printed tensor data");
+    
     drop(guard);
     Ok(())
 }

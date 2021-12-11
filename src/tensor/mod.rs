@@ -1,5 +1,8 @@
-//! Module contains implementation of tensors with there basic operations
-//!
+//! Module contains implementation of tensors with their basic operations
+use std::error::Error;
+
+use async_trait::async_trait;
+
 use crate::device::Device;
 
 mod cpu;
@@ -29,5 +32,17 @@ pub enum TensorData<T> {
     CPUStrided(Vec<T>),
     GPUStrided(wgpu::Buffer),
 }
+
+///Traits used for tensor conversion
+#[async_trait(?Send)]
+pub trait GetFromGPU<D: Device, L: Layout, T: Clone + bytemuck::Pod, const N: usize> {
+    async fn into_device<'a>(self, device: &'a D) ->  Result<Tensor<'a, D, L, T, N>, Box<dyn Error>>;
+}
+
+#[async_trait(?Send)]
+pub trait GetFromCPU<D: Device, L: Layout, T: Clone + bytemuck::Pod, const N: usize> {
+    async fn into_device<'a>(self, device: &'a D) ->  Result<Tensor<'a, D, L, T, N>, Box<dyn Error>>;
+}
+
 
 

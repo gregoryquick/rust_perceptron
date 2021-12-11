@@ -1,14 +1,18 @@
 //! Implementation of basic operations for strided cpu tensors
 use std::error::Error;
 
+use async_trait::async_trait;
 use enum_extract::extract;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 
 use crate::device::{CPU, GPU};
 use crate::tensor::{Tensor, TensorData, Strided};
+use crate::tensor::GetFromCPU;
 
-impl<'a, T: Clone +  bytemuck::Pod, const N: usize> Tensor<'a, CPU, Strided<N>, T, N> {
-    pub async fn to_device<'b>(self, target_device: &'b GPU) -> Result<Tensor<'b, GPU, Strided<N>, T, N>, Box<dyn Error>> {
+/// Moves from cpu to gpu
+#[async_trait(?Send)]
+impl<'a, T: Clone +  bytemuck::Pod, const N: usize> GetFromCPU<GPU, Strided<N>, T, N> for Tensor<'a, CPU, Strided<N>, T, N> {
+    async fn into_device<'b>(self, target_device: &'b GPU) -> Result<Tensor<'b, GPU, Strided<N>, T, N>, Box<dyn Error>> {
         let Tensor {
             device: cpu,
             tensor_layout,
@@ -29,13 +33,14 @@ impl<'a, T: Clone +  bytemuck::Pod, const N: usize> Tensor<'a, CPU, Strided<N>, 
         //Return
         Ok(Tensor {
             device: target_device,
-            tensor_layout: tensor_layout,
-            shape: shape,
+            tensor_layout,
+            shape,
             data: TensorData::GPUStrided::<T>(trg_buffer),
         })
     }
 }
 
+/// Clones Tensor
 impl<'a, T: Clone +  bytemuck::Pod, const N: usize> Clone for Tensor<'a, CPU, Strided<N>, T, N> {
     fn clone(&self) -> Self {
         let src_vec = extract!(TensorData::CPUStrided(_), &self.data).unwrap();
