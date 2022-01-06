@@ -7,10 +7,14 @@ use itertools::Itertools;
 use crate::tensor::*;
 use crate::device::GPU;
 
-pub fn forward<'a, const N: usize>(tensor_a: &Tensor<'a, GPU, Strided<N>, f32, N>, tensor_b: &Tensor<'a, GPU, Strided<N>, f32, N>) -> Tensor<'a, GPU, Strided<N>, f32, N> {
+pub fn forward<'a, const N: usize>(
+    gpu: &'a GPU,
+    tensor_a: &Tensor<'a, GPU, Strided<N>, f32, N>,
+    tensor_b: &Tensor<'a, GPU, Strided<N>, f32, N>
+    ) -> Tensor<'a, GPU, Strided<N>, f32, N> {
         //Unpack tensors
         let Tensor {
-            device: gpu,
+            device: gpu_a,
             tensor_layout: Strided {
                 strides: tensor_a_strides,
             },
@@ -19,7 +23,7 @@ pub fn forward<'a, const N: usize>(tensor_a: &Tensor<'a, GPU, Strided<N>, f32, N
         } = tensor_a;
 
         let Tensor {
-            device: _,
+            device: gpu_b,
             tensor_layout: Strided {
                 strides: tensor_b_strides,
             },
@@ -27,18 +31,20 @@ pub fn forward<'a, const N: usize>(tensor_a: &Tensor<'a, GPU, Strided<N>, f32, N
             data: tensor_b_data,
         } = tensor_b;
 
+        //Check if tensor devices match
+
         //Check if tensor shapes match
         assert!(!(tensor_a_shape != tensor_b_shape), "Tensor shape mismatch");
 
         //Create meta data values
-        let size: usize = tensor_a_shape.iter().product();
         let type_size = std::mem::size_of::<f32>();
 
         let output_tensor_shape = tensor_a_shape.clone();
+        let size: usize = output_tensor_shape.iter().product();
         let output_tensor_strides = tensor_a_strides.clone();
 
         let execution_indexes = {
-            let mut labeled_dims: Vec<(usize, usize)> = tensor_a_shape.iter().copied().enumerate().collect();
+            let mut labeled_dims: Vec<(usize, usize)> = output_tensor_shape.iter().copied().enumerate().collect();
             labeled_dims.sort_by(|(_, a), (_, b)| b.cmp(a));
             labeled_dims.into_iter().map(|(x, _)| x).take(3).collect::<Vec<usize>>()
         };
@@ -56,10 +62,6 @@ pub fn forward<'a, const N: usize>(tensor_a: &Tensor<'a, GPU, Strided<N>, f32, N
                 b_strides[index] = tensor_b_strides[key] as u32;
             }
 
-            println!("{:?}", sizes);
-            println!("{:?}", strides);
-            println!("{:?}", a_strides);
-            println!("{:?}", b_strides);
             (sizes, strides, a_strides, b_strides)
         };
 
@@ -270,7 +272,7 @@ pub fn forward<'a, const N: usize>(tensor_a: &Tensor<'a, GPU, Strided<N>, f32, N
         
         //Return
         Tensor {
-            device: <&GPU>::clone(gpu),
+            device: gpu,
             tensor_layout: Strided {
                 strides: output_tensor_strides,
             },

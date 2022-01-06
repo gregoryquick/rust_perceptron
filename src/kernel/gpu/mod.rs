@@ -1,1 +1,2 @@
-pub mod matrix_operations;
+pub mod arithmetic_operations;
+pub mod tensor_operations;
