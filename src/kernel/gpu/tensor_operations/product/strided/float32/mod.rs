@@ -8,12 +8,13 @@ use crate::tensor::*;
 use crate::device::GPU;
 
 pub fn forward<'a, const N_a: usize, const N_b: usize>(
-                                    tensor_a: &Tensor<'a, GPU, Strided<N_a>, f32, N_a>,
-                                    tensor_b: &Tensor<'a, GPU, Strided<N_b>, f32, N_b>,
-                                    ) -> Tensor<'a, GPU, Strided<{N_a + N_b}>, f32, {N_a + N_b}> {
+    gpu: &'a GPU,
+    tensor_a: &Tensor<'a, GPU, Strided<N_a>, f32, N_a>,
+    tensor_b: &Tensor<'a, GPU, Strided<N_b>, f32, N_b>,
+    ) -> Tensor<'a, GPU, Strided<{N_a + N_b}>, f32, {N_a + N_b}> {
         //Unpack tensors
         let Tensor {
-            device: gpu,
+            device: gpu_a,
             tensor_layout: Strided {
                 strides: tensor_a_strides,
             },
@@ -22,13 +23,17 @@ pub fn forward<'a, const N_a: usize, const N_b: usize>(
         } = tensor_a;
 
         let Tensor {
-            device: _,
+            device: gpu_b,
             tensor_layout: Strided {
                 strides: tensor_b_strides,
             },
             shape: tensor_b_shape,
             data: tensor_b_data,
         } = tensor_b;
+
+        //Check if tensor devices match
+        assert!(!(gpu as *const _ != *gpu_a as *const _), "Tensor device mismatch");
+        assert!(!(gpu as *const _ != *gpu_b as *const _), "Tensor device mismatch");
 
         //Calculate important values for internal use
         let a_len = tensor_a_shape.iter().count();
@@ -208,35 +213,35 @@ pub fn forward<'a, const N_a: usize, const N_b: usize>(
             }
         );
 
-
         //Add instructions to encoder
-        let offsets: Vec<(usize, usize)> = {
-            let mut info: Vec<(usize, (usize, usize))> = vec![];
+        let offsets: Vec<(usize, usize, usize)> = {
+            let mut info: Vec<(usize, (usize, usize, usize))> = vec![];
             for (index, size) in output_tensor_shape.iter().copied().enumerate() {
                 if execution_indexes.contains(&index) {
                     continue;
                 }
                 if index < a_len {
-                    info.push((size, (tensor_a_strides[index], 0)));
+                    info.push((size, (output_tensor_strides[index], tensor_a_strides[index], 0)));
                 }
                 else {
-                     info.push((size, (0, tensor_b_strides[index])));
+                     info.push((size, (output_tensor_strides[index], 0, tensor_b_strides[index])));
                 }
             }
-            let mut offsets: Vec<(usize, usize)> = info.into_iter()
-                .map(|(size, (stride_a, stride_b))| (0..size).map(|x| (x * stride_a, x * stride_b)).collect::<Vec<(usize, usize)>>())
-                .multi_cartesian_product().map(|x| x.into_iter().fold((0,0), |(acc_a, acc_b), (x_a, x_b)| (acc_a + x_a, acc_b + x_b)))
+            let mut offsets: Vec<(usize, usize, usize)> = info.into_iter()
+                .map(|(size, (output_stride, stride_a, stride_b))| (0..size).map(|x| (x * output_stride,x * stride_a, x * stride_b)).collect::<Vec<(usize, usize, usize)>>())
+                .multi_cartesian_product().map(|x| x.into_iter().fold((0,0,0), |(acc, acc_a, acc_b), (x, x_a, x_b)| (acc + x,acc_a + x_a, acc_b + x_b)))
                 .collect();
             if offsets.is_empty() {
-                offsets.push((0,0));
+                offsets.push((0,0,0));
             }
             offsets
         };
 
         for start_positions in offsets {
             //Create buffer for start position
-            let (start_position_a, start_position_b) = start_positions;
+            let (start_position, start_position_a, start_position_b) = start_positions;
             let offset = Offset {
+                offset: start_position as u32,
                 offset_a: start_position_a as u32,
                 offset_b: start_position_b as u32,
             };
@@ -284,7 +289,6 @@ pub fn forward<'a, const N_a: usize, const N_b: usize>(
             //Run compute pass
             compute_pass.set_pipeline(&compute_pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
-            println!("{:?}", execution_sizes);
             compute_pass.dispatch(execution_sizes[0], execution_sizes[1], execution_sizes[2]);
         }
 
@@ -293,7 +297,7 @@ pub fn forward<'a, const N_a: usize, const N_b: usize>(
         
         //Return
         Tensor {
-            device: <&GPU>::clone(gpu),
+            device: gpu,
             tensor_layout: Strided {
                 strides: output_tensor_strides,
             },
@@ -316,6 +320,7 @@ struct OperationMetaData {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Offset {
+    offset: u32,
     offset_a: u32,
     offset_b: u32,
 }

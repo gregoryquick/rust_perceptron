@@ -5,6 +5,7 @@
 };
 
 [[block]] struct Offset {
+	offset: u32;
    	offset_a: u32;
 	offset_b: u32;
 };

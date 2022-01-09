@@ -63,8 +63,7 @@ impl<'a, T: Clone +  bytemuck::Pod, const N: usize> GetFromGPU<CPU, Strided<N>, 
         //Pull data from gpu
         let data = buffer_slice.get_mapped_range();
         let trg_vec = data.chunks_exact(type_size).map(|b| *bytemuck::from_bytes::<T>(b)).collect();
-
-        
+ 
         //Drop mapped view and unmap buffer
         drop(data);
         staging_buffer.unmap();

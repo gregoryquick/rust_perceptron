@@ -28,7 +28,6 @@ use std::error::Error;
 use tracing::{span, event, Level};
 
 mod device;
-mod dispatch;
 mod kernel;
 mod tensor;
 
@@ -40,7 +39,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     //Logging
     use std::env;
     env::set_var("RUST_BACKTRACE", "1");
-    env::set_var("RUST_LOG", "info");
+    //env::set_var("RUST_LOG", "info");
 
     tracing_subscriber::fmt::init();
 
@@ -57,43 +56,63 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let guard = span.enter();
 
     use crate::tensor::*;
+    use enum_extract::extract;
 
     let gpu_0 = pool.gpus()[0];
     let gpu_1 = pool.gpus()[1];
     let cpu = pool.cpu();
 
+    const size: usize = 3;
+
     let tensor_0 = Tensor {
         device: cpu,
         tensor_layout: Strided {
-            strides: [1],
+            strides: [size, 1],
         },
-        shape: [2],
+        shape: [size, size],
         data: TensorData::CPUStrided::<f32>(
-            vec![
-            1.0,
-            0.0,
-            ]
+            [0.0; size * size].into_iter().collect()
         ),
     };
     event!(Level::INFO, "Created a tensor");
 
-    let tensor_a = tensor_0.into_device(gpu_0).await?;
+    let mut tensor_0 = tensor_0.into_device(gpu_0).await?;
     event!(Level::INFO, "Moved tensor to GPU");
 
-    let tensor_b = tensor_a.clone().into_device(gpu_1).await?;
-    event!(Level::INFO, "Cloned tensor");
+    for i in 0..size {
+        let basis_vector = Tensor {
+            device: cpu,
+            tensor_layout: Strided {
+                strides: [1],
+            },
+            shape: [size],
+            data: TensorData::CPUStrided::<f32>({
+                let mut basis: Vec<f32> =[0.0; size].into_iter().collect();
+                basis[i] = 1.0;
+                basis
+            }),
+        };
+        let basis_vector = basis_vector.into_device(gpu_0).await?;
 
-    //let tensor_c = kernel::gpu::tensor_operations::product::strided::float32::forward(&tensor_a, &tensor_b);
-    //event!(Level::INFO, "Multiplied tensors");
+        //
+        let data = extract!(TensorData::CPUStrided(_), basis_vector.clone().into_device(cpu).await?.data).unwrap();
+        println!("{:?}", data);
+        //
 
-    let tensor_c = kernel::gpu::arithmetic_operations::elementwise_add::strided::float32::forward(gpu_0, &tensor_a, &tensor_b);
-    event!(Level::INFO, "Added tensors");
+        let basis_tensor = kernel::gpu::tensor_operations::product::strided::float32::forward(gpu_0, &basis_vector, &basis_vector);
 
-    let tensor_1 = tensor_c.into_device(cpu).await?;
+        //
+        let data = extract!(TensorData::CPUStrided(_), basis_tensor.clone().into_device(cpu).await?.data).unwrap();
+        println!("{:?}", data);
+        //
+
+        tensor_0 = kernel::gpu::arithmetic_operations::elementwise_add::strided::float32::forward(gpu_0, &tensor_0, &basis_tensor)
+    }
+
+    let tensor_0 = tensor_0.into_device(cpu).await?;
     event!(Level::INFO, "Moved tensor to CPU");
     
-    use enum_extract::extract;
-    let data = extract!(TensorData::CPUStrided(_), tensor_1.data).unwrap();
+    let data = extract!(TensorData::CPUStrided(_), tensor_0.data).unwrap();
     println!("{:?}", data);
     event!(Level::INFO, "Printed tensor data");
     

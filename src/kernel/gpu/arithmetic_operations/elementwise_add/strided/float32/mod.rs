@@ -32,15 +32,20 @@ pub fn forward<'a, const N: usize>(
         } = tensor_b;
 
         //Check if tensor devices match
+        assert!(!(gpu as *const _ != *gpu_a as *const _), "Tensor device mismatch");
+        assert!(!(gpu as *const _ != *gpu_b as *const _), "Tensor device mismatch");
 
         //Check if tensor shapes match
         assert!(!(tensor_a_shape != tensor_b_shape), "Tensor shape mismatch");
 
-        //Create meta data values
+        //Calculate important values for internal use
         let type_size = std::mem::size_of::<f32>();
 
+        //Create meta data values
         let output_tensor_shape = tensor_a_shape.clone();
+
         let size: usize = output_tensor_shape.iter().product();
+        
         let output_tensor_strides = tensor_a_strides.clone();
 
         let execution_indexes = {
@@ -215,7 +220,6 @@ pub fn forward<'a, const N: usize>(
 
         for start_position in offsets {
             //Create buffer for start position
-            println!("{}", start_position);
             let offset = Offset {
                 offset: start_position as u32,
             };
@@ -263,7 +267,6 @@ pub fn forward<'a, const N: usize>(
             //Run compute pass
             compute_pass.set_pipeline(&compute_pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
-            println!("{:?}", execution_sizes);
             compute_pass.dispatch(execution_sizes[0], execution_sizes[1], execution_sizes[2]);
         }
 
