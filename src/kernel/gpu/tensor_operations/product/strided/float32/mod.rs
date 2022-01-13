@@ -49,12 +49,13 @@ pub fn forward<'a, const N_a: usize, const N_b: usize>(
         };
 
         let size: usize = output_tensor_shape.iter().product();
-        let stride_factor: usize = tensor_b_shape.iter().product();
         
         let output_tensor_strides = {
             let mut strides = [0 as usize; N_a + N_b];
-            for (location, value) in strides.iter_mut().zip(tensor_a_strides.iter().cloned().map(|v| stride_factor * v).chain(tensor_b_strides.iter().cloned())) {
-                *location = value;
+            let mut current_stride = 1;
+            for (location, value) in strides.iter_mut().zip(output_tensor_shape.iter().cloned()).rev() {
+                *location = current_stride;
+                current_stride = current_stride * value;
             }
             strides
         };
@@ -67,17 +68,17 @@ pub fn forward<'a, const N_a: usize, const N_b: usize>(
         
         let (execution_sizes, execution_strides, execution_a_strides, execution_b_strides) = {
             let mut sizes: [u32; 3] = [1, 1, 1];
-            let mut strides: [u32; 3] = [0,0,0];
-            let mut a_strides: [u32; 3] = [0,0,0];
-            let mut b_strides: [u32; 3] = [0,0,0];
+            let mut strides: [u32; 3] = [0, 0, 0];
+            let mut a_strides: [u32; 3] = [0, 0, 0];
+            let mut b_strides: [u32; 3] = [0, 0, 0];
 
             for (index, key) in execution_indexes.iter().copied().enumerate() {
                 sizes[index] = output_tensor_shape[key] as u32;
                 strides[index] = output_tensor_strides[key] as u32;
-                if index < a_len {
+                if key < a_len {
                     a_strides[index] = tensor_a_strides[key] as u32;
                 } else {
-                     b_strides[index] = tensor_b_strides[key % a_len] as u32;
+                    b_strides[index] = tensor_b_strides[key - a_len] as u32;
                 }
             }
             
@@ -229,10 +230,10 @@ pub fn forward<'a, const N_a: usize, const N_b: usize>(
             }
             let mut offsets: Vec<(usize, usize, usize)> = info.into_iter()
                 .map(|(size, (output_stride, stride_a, stride_b))| (0..size).map(|x| (x * output_stride,x * stride_a, x * stride_b)).collect::<Vec<(usize, usize, usize)>>())
-                .multi_cartesian_product().map(|x| x.into_iter().fold((0,0,0), |(acc, acc_a, acc_b), (x, x_a, x_b)| (acc + x,acc_a + x_a, acc_b + x_b)))
+                .multi_cartesian_product().map(|x| x.into_iter().fold((0, 0, 0), |(acc, acc_a, acc_b), (x, x_a, x_b)| (acc + x,acc_a + x_a, acc_b + x_b)))
                 .collect();
             if offsets.is_empty() {
-                offsets.push((0,0,0));
+                offsets.push((0, 0, 0));
             }
             offsets
         };

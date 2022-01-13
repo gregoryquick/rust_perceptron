@@ -7,11 +7,12 @@ use itertools::Itertools;
 use crate::tensor::*;
 use crate::device::GPU;
 
-pub fn forward<'a, const N: usize>(
+pub fn forward<'a, const N_a: usize, const N_b: usize>(
     gpu: &'a GPU,
-    tensor_a: &Tensor<'a, GPU, Strided<N>, f32, N>,
-    tensor_b: &Tensor<'a, GPU, Strided<N>, f32, N>
-    ) -> Tensor<'a, GPU, Strided<N>, f32, N> {
+    tensor_a: &Tensor<'a, GPU, Strided<N_a>, f32, N_a>, index_a: usize,
+    tensor_b: &Tensor<'a, GPU, Strided<N_b>, f32, N_b>, index_b: usize,
+    ) -> Tensor<'a, GPU, Strided<{N_a + N_b - 2}>, f32, {N_a + N_b - 2}>
+    where [(); N_a - 1]:, [(); N_b - 1]: {
         //Unpack tensors
         let Tensor {
             device: gpu_a,
@@ -32,22 +33,72 @@ pub fn forward<'a, const N: usize>(
         } = tensor_b;
 
         //Check if tensor devices match
-        assert!(!(gpu as *const _ != *gpu_a as *const _), "Tensor device mismatch");
-        assert!(!(gpu as *const _ != *gpu_b as *const _), "Tensor device mismatch");
+        assert!(gpu as *const _ == *gpu_a as *const _, "Tensor device mismatch");
+        assert!(gpu as *const _ == *gpu_b as *const _, "Tensor device mismatch");
 
-        //Check if tensor shapes are compatable 
-        assert!(!(tensor_a_shape != tensor_b_shape), "Tensor shape mismatch");
+        //Check if tensor shapes are compatable
+        assert!(tensor_a_shape[index_a] == tensor_b_shape[index_b], "Contraction dimension mismatch");
 
         //Calculate important values for internal use
         let type_size = std::mem::size_of::<f32>();
 
+        let contract_size = tensor_a_shape[index_a];
+        let contract_a = tensor_a_strides[index_a];
+        let contract_b = tensor_b_strides[index_b];
+
+        let tensor_a_shape = {
+            let mut shape = [0 as usize; N_a - 1];
+            for (location, value) in shape.iter_mut().zip(tensor_a_shape.iter().cloned().enumerate().filter(|(x, _)| *x != index_a).map(|(_, x)| x)) {
+                *location = value;
+            }
+            shape
+        };
+        let tensor_a_strides = {
+            let mut stride = [0 as usize; N_a - 1];
+            for (location, value) in stride.iter_mut().zip(tensor_a_strides.iter().cloned().enumerate().filter(|(x, _)| *x != index_a).map(|(_, x)| x)) {
+                *location = value;
+            }
+            stride
+        };
+
+        let tensor_b_shape = {
+            let mut shape = [0 as usize; N_b - 1];
+            for (location, value) in shape.iter_mut().zip(tensor_b_shape.iter().cloned().enumerate().filter(|(x, _)| *x != index_b).map(|(_, x)| x)) {
+                *location = value;
+            }
+            shape
+        };
+        let tensor_b_strides = {
+            let mut stride = [0 as usize; N_b - 1];
+            for (location, value) in stride.iter_mut().zip(tensor_b_strides.iter().cloned().enumerate().filter(|(x, _)| *x != index_b).map(|(_, x)| x)) {
+                *location = value;
+            }
+            stride
+        };
+
+        let a_len = tensor_a_shape.iter().count();        
+
         //Create meta data values
-        let output_tensor_shape = tensor_a_shape.clone();
+        let output_tensor_shape = {
+            let mut shape = [0 as usize; N_a + N_b - 2];
+            for (location, value) in shape.iter_mut().zip(tensor_a_shape.iter().cloned().chain(tensor_b_shape.iter().cloned())) {
+                *location = value;
+            }
+            shape
+        };
 
         let size: usize = output_tensor_shape.iter().product();
         
-        let output_tensor_strides = tensor_a_strides.clone();
-
+        let output_tensor_strides = {
+            let mut strides = [0 as usize; N_a + N_b - 2];
+            let mut current_stride = 1;
+            for (location, value) in strides.iter_mut().zip(output_tensor_shape.iter().cloned()).rev() {
+                *location = current_stride;
+                current_stride = current_stride * value;
+            }
+            strides
+        };
+        
         let execution_indexes = {
             let mut labeled_dims: Vec<(usize, usize)> = output_tensor_shape.iter().copied().enumerate().collect();
             labeled_dims.sort_by(|(_, a), (_, b)| b.cmp(a));
@@ -55,7 +106,7 @@ pub fn forward<'a, const N: usize>(
         };
         
         let (execution_sizes, execution_strides, execution_a_strides, execution_b_strides) = {
-            let mut sizes: [u32; 3] = [1, 1, 1,];
+            let mut sizes: [u32; 3] = [1, 1, 1];
             let mut strides: [u32; 3] = [0, 0, 0];
             let mut a_strides: [u32; 3] = [0, 0, 0];
             let mut b_strides: [u32; 3] = [0, 0, 0];
@@ -63,10 +114,13 @@ pub fn forward<'a, const N: usize>(
             for (index, key) in execution_indexes.iter().copied().enumerate() {
                 sizes[index] = output_tensor_shape[key] as u32;
                 strides[index] = output_tensor_strides[key] as u32;
-                a_strides[index] = tensor_a_strides[key] as u32;
-                b_strides[index] = tensor_b_strides[key] as u32;
+                if key < a_len {
+                    a_strides[index] = tensor_a_strides[key] as u32;
+                } else {
+                    b_strides[index] = tensor_b_strides[key - a_len] as u32;
+                }
             }
-
+            
             (sizes, strides, a_strides, b_strides)
         };
 
@@ -199,7 +253,6 @@ pub fn forward<'a, const N: usize>(
             }
         );
 
-
         //Add instructions to encoder
         let offsets: Vec<(usize, usize, usize)> = {
             let mut info: Vec<(usize, (usize, usize, usize))> = vec![];
@@ -207,10 +260,15 @@ pub fn forward<'a, const N: usize>(
                 if execution_indexes.contains(&index) {
                     continue;
                 }
-                info.push((size, (output_tensor_strides[index], tensor_a_strides[index], tensor_b_strides[index])));
+                if index < a_len {
+                    info.push((size, (output_tensor_strides[index], tensor_a_strides[index], 0)));
+                }
+                else {
+                     info.push((size, (output_tensor_strides[index], 0, tensor_b_strides[index])));
+                }
             }
             let mut offsets: Vec<(usize, usize, usize)> = info.into_iter()
-                .map(|(size, (output_stride, stride_a, stride_b))| (0..size).map(|x| (x * output_stride, x * stride_a, x * stride_b)).collect::<Vec<(usize, usize, usize)>>())
+                .map(|(size, (output_stride, stride_a, stride_b))| (0..size).map(|x| (x * output_stride,x * stride_a, x * stride_b)).collect::<Vec<(usize, usize, usize)>>())
                 .multi_cartesian_product().map(|x| x.into_iter().fold((0, 0, 0), |(acc, acc_a, acc_b), (x, x_a, x_b)| (acc + x,acc_a + x_a, acc_b + x_b)))
                 .collect();
             if offsets.is_empty() {
@@ -218,60 +276,62 @@ pub fn forward<'a, const N: usize>(
             }
             offsets
         };
+        
+        for i in 0..contract_size {
+            for start_positions in offsets.clone() {
+                //Create buffer for start position
+                let (start_position, start_position_a, start_position_b) = start_positions;
+                let offset = Offset {
+                    offset: start_position as u32,
+                    offset_a: (start_position_a + contract_a * i) as u32,
+                    offset_b: (start_position_a + contract_b * i) as u32,
+                };
+                let start_buffer = gpu.device.create_buffer_init(
+                    &BufferInitDescriptor {
+                        label: Some("Offset buffer"),
+                        contents: bytemuck::bytes_of(&offset),
+                        usage: wgpu::BufferUsages::STORAGE,
+                    }
+                );
+                
+                //Create bind group
+                let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: None,
+                    layout: &bind_group_layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: meta_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: start_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: buffer_a.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: buffer_b.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: output_buffer.as_entire_binding(),
+                    }],
+                });
 
-        for start_positions in offsets {
-            //Create buffer for start positions
-            let (start_position, start_position_a, start_position_b) = start_positions;
-            let offset = Offset {
-                offset: start_position as u32,
-                offset_a: start_position as u32,
-                offset_b: start_position as u32,
-            };
-            let start_buffer = gpu.device.create_buffer_init(
-                &BufferInitDescriptor {
-                    label: Some("Offset buffer"),
-                    contents: bytemuck::bytes_of(&offset),
-                    usage: wgpu::BufferUsages::STORAGE,
-                }
-            );
-
-            //Create bind group
-            let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: None,
-                layout: &bind_group_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: meta_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: start_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: buffer_a.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: buffer_b.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: output_buffer.as_entire_binding(),
-                }],
-            });
-
-            //Create compute pass
-            let mut compute_pass = encoder.begin_compute_pass(
-                &wgpu::ComputePassDescriptor {
-                    label: Some("Elementwise Addition"),
-                }
-            );
+                //Create compute pass
+                let mut compute_pass = encoder.begin_compute_pass(
+                    &wgpu::ComputePassDescriptor {
+                        label: Some("Einstien Summation"),
+                    }
+                );
             
-            //Run compute pass
-            compute_pass.set_pipeline(&compute_pipeline);
-            compute_pass.set_bind_group(0, &bind_group, &[]);
-            compute_pass.dispatch(execution_sizes[0], execution_sizes[1], execution_sizes[2]);
+                //Run compute pass
+                compute_pass.set_pipeline(&compute_pipeline);
+                compute_pass.set_bind_group(0, &bind_group, &[]);
+                compute_pass.dispatch(execution_sizes[0], execution_sizes[1], execution_sizes[2]);
+            }
         }
 
         //Submit operations to gpu
@@ -304,6 +364,6 @@ struct OperationMetaData {
 struct Offset {
     offset: u32,
     offset_a: u32,
-    offset_b: u32,    
+    offset_b: u32,
 }
 

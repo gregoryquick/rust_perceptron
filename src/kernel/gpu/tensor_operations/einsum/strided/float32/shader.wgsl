@@ -5,8 +5,8 @@
 };
 
 [[block]] struct Offset {
-   	offset: u32;
-	offset_a: u32;
+	offset: u32;
+   	offset_a: u32;
 	offset_b: u32;
 };
 
@@ -29,5 +29,5 @@ fn main ([[builtin(global_invocation_id)]] global_id: vec3<u32>) {
 	let target_index: u32 = start_position.offset + toIndex(global_id * meta_data.output_strides);
 	let index_a: u32 = start_position.offset_a + toIndex(global_id * meta_data.tensor_a_strides);
 	let index_b: u32 = start_position.offset_b + toIndex(global_id * meta_data.tensor_b_strides);
-	target.data[target_index] = tensor_a.data[index_a] + tensor_b.data[index_b];
+	target.data[target_index] = target.data[target_index] + tensor_a.data[index_a] * tensor_b.data[index_b];
 }
