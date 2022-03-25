@@ -132,21 +132,54 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("{:?}", extract!(TensorData::CPUStrided(_), tensor_2.clone().into_device(cpu).await?.data).unwrap());
     event!(Level::INFO, "Took dot product");
 
-    let mut tensor_3 = {
+    let tensor_3 = kernel::gpu::arithmetic_operations::elementwise_add::strided::float32::forward(gpu_0, &tensor_1, &tensor_2);
+    println!("{:?}", extract!(TensorData::CPUStrided(_), tensor_3.clone().into_device(cpu).await?.data).unwrap());
+    event!(Level::INFO, "Added two tensors");
+
+    let grad = Tensor {
+        device: cpu,
+        tensor_layout: Strided {
+            strides: [1],
+        },
+        shape: [size],
+        data: TensorData::CPUStrided::<f32>(vec![1.0f32; size]),
+    }.into_device(gpu_0).await?;
+    //let (tensor_1_grad, tensor_2_grad) = kernel::gpu::arithmetic_operations::elementwise_add::strided::float32::backward(gpu_0, &grad, &tensor_1, &tensor_2);
+    let (tensor_1_grad, tensor_2_grad) = kernel::gpu::arithmetic_operations::elementwise_add::strided::float32::backward(gpu_0, &tensor_3, &tensor_1, &tensor_2);
+    println!("{:?}", extract!(TensorData::CPUStrided(_), tensor_1_grad.clone().into_device(cpu).await?.data).unwrap());
+    println!("{:?}", extract!(TensorData::CPUStrided(_), tensor_2_grad.clone().into_device(cpu).await?.data).unwrap());
+    event!(Level::INFO, "Grads of additon inputs");
+
+    #[allow(unused_assignments)]
+    let mut tensor_stack = {
         Tensor {
             device: cpu,
             tensor_layout: Strided {
                 strides: [size, 1],
             },
-            shape: [2, size],
-            data: TensorData::CPUStrided::<f32>(vec![0f32; 2 * size]),
+            shape: [3, size],
+            data: TensorData::CPUStrided::<f32>(vec![0f32; 3 * size]),
         }
     }.into_device(gpu_0).await?;
-    tensor_3 = kernel::gpu::tensor_operations::concat::strided::float32::forward(gpu_0, vec![&tensor_1, &tensor_2].into_iter());
-    println!("{:?}", extract!(TensorData::CPUStrided(_), tensor_3.clone().into_device(cpu).await?.data).unwrap());
-    event!(Level::INFO, "Concatinated two tensors");
+    tensor_stack = kernel::gpu::tensor_operations::stack::strided::float32::forward(gpu_0, vec![&tensor_1, &tensor_2, &tensor_3].into_iter());
+    println!("{:?}", extract!(TensorData::CPUStrided(_), tensor_stack.clone().into_device(cpu).await?.data).unwrap());
+    event!(Level::INFO, "Stacked tensors");
+    
+    let grad = Tensor {
+        device: cpu,
+        tensor_layout: Strided {
+            strides: [size, 1],
+        },
+        shape: [3, size],
+        data: TensorData::CPUStrided::<f32>(vec![1.0f32; 3 * size]),
+    }.into_device(gpu_0).await?;
+    //let stack_grads = kernel::gpu::tensor_operations::stack::strided::float32::backward(gpu_0, &grad, vec![&tensor_1, &tensor_2, &tensor_3].into_iter());
+    let stack_grads = kernel::gpu::tensor_operations::stack::strided::float32::backward(gpu_0, &tensor_stack, vec![&tensor_1, &tensor_2, &tensor_3].into_iter());
+    for tensor in stack_grads {
+        println!("{:?}", extract!(TensorData::CPUStrided(_), tensor.clone().into_device(cpu).await?.data).unwrap());
+    }
+    event!(Level::INFO, "Took grad of stacking");
 
-        
     drop(guard);
     Ok(())
 }

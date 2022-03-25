@@ -1,4 +1,4 @@
-pub mod concat;
 pub mod einsum;
 pub mod product;
+pub mod stack;
 
